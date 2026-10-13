@@ -6,12 +6,15 @@ import asyncio
 import logging
 import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...constants import is_secrets_file
 from ...helpers.async_ import run_in_executor
+from ...helpers.atomic_io import read_text_with_stat
 from ...helpers.build_size import coerce_sidecar_int
 from ...helpers.config_hash import read_build_info_hash
+from ...helpers.device_yaml import extract_config_content_fingerprint
 from ...helpers.subprocess import run_subprocess_capture
 
 if TYPE_CHECKING:
@@ -109,10 +112,13 @@ async def _run(controller: DevicesController, configuration: str) -> None:
                 return
         # Delegates so tests patching the class intercept.
         async with controller._regenerate_lock:
+            # Read right before the spawn: an edit landing mid-run must not
+            # be stamped as the content the hash was generated from.
+            fingerprint = await run_in_executor(_content_fingerprint, config_path)
             failure = await controller._spawn_only_generate(configuration)
         if failure is None:
             regen.cancel_retry(configuration)
-            await controller._finalize_regen_success(configuration)
+            await controller._finalize_regen_success(configuration, fingerprint)
             await controller._scanner.reload(configuration)
             return
         # Stamp against the pre-spawn mtime: an edit landing mid-run must
@@ -190,9 +196,13 @@ def stamp_failure(controller: DevicesController, configuration: str, mtime: floa
     return attempts
 
 
-async def finalize_success(controller: DevicesController, configuration: str) -> None:
+async def finalize_success(
+    controller: DevicesController, configuration: str, fingerprint: str
+) -> None:
     """
     Read ``config_hash`` from ``build_info.json`` and clear the failure stamp.
+
+    *fingerprint* is the content the regen read; it is stamped beside the hash.
 
     ``read_build_info_hash`` is blocking — runs on the
     executor; the store merge afterwards is in-RAM with a
@@ -207,6 +217,8 @@ async def finalize_success(controller: DevicesController, configuration: str) ->
     }
     if new_hash:
         fields["expected_config_hash"] = new_hash
+        fields["regen_config_hash"] = new_hash
+        fields["regen_content_fingerprint"] = fingerprint
     controller._metadata_store.update(configuration, **fields)
     if not new_hash:
         _LOGGER.warning(
@@ -272,3 +284,14 @@ def _arm_retry(controller: DevicesController, configuration: str, delay: float) 
 def _fire_retry(controller: DevicesController, configuration: str) -> None:
     controller.state.regen.retry_timers.pop(configuration, None)
     schedule(controller, configuration)
+
+
+def _content_fingerprint(config_path: Path) -> str:
+    """Fingerprint of the YAML at *config_path*; empty when it can't be read."""
+    try:
+        return extract_config_content_fingerprint(read_text_with_stat(config_path)[1])
+    except (OSError, UnicodeDecodeError):
+        _LOGGER.debug(
+            "Storage regenerate for %s: fingerprint read failed", config_path, exc_info=True
+        )
+        return ""
