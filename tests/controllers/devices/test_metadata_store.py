@@ -560,7 +560,7 @@ async def test_clear_volatile_pops_every_store_field(tmp_path: Path) -> None:
         build_size_bytes=4096,
         build_size_dir_mtime=1714900000,
         build_size_info_mtime=1714900050,
-        regen_failed_mtime=1700000000.0,
+        regen_failed_content_fingerprint="2:abc",
         regen_failed_at=1700000005.0,
     )
 
@@ -622,10 +622,11 @@ def test_store_fields_pinned() -> None:
                 "regen_config_hash",
                 "regen_content_fingerprint",
                 "content_fingerprint",
+                "dependencies",
                 "build_size_bytes",
                 "build_size_dir_mtime",
                 "build_size_info_mtime",
-                "regen_failed_mtime",
+                "regen_failed_content_fingerprint",
                 "regen_failed_at",
                 "regen_failed_attempts",
             }

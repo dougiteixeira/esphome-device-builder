@@ -14,8 +14,9 @@ from ...helpers.api import CommandError
 from ...helpers.async_ import run_in_executor
 from ...helpers.device_config import read_device_config_async
 from ...helpers.device_yaml import (
+    UnreadableDependencyError,
     config_has_top_level_block,
-    extract_config_content_fingerprint,
+    source_fingerprint,
     yaml_has_top_level_block,
 )
 from ...helpers.mac_addresses import normalize_mac
@@ -169,7 +170,7 @@ async def _apply_to_device(
             content,
             key,
             record_previous=keep_previous,
-            replace_old_key=_runs_yaml(controller, device, content),
+            replace_old_key=await _runs_yaml(controller, device, content),
         )
     except YamlUpsertNotSupportedError as exc:
         return KeyHandoffResult.NOT_WRITABLE, str(exc)
@@ -216,15 +217,19 @@ def _ota_old_key_supported() -> bool:
     return hasattr(espota2, "CONF_OLD_KEY")
 
 
-def _runs_yaml(controller: DevicesController, device: Device, content: str) -> bool:
+async def _runs_yaml(controller: DevicesController, device: Device, content: str) -> bool:
     """Whether the device reports the hash a storage regen produced for this very YAML *content*."""
     md = controller._metadata_store.get(device.configuration)
     deployed = device.runtime_state.deployed_config_hash
-    return (
-        bool(deployed)
-        and md.get("regen_config_hash") == deployed
-        and md.get("regen_content_fingerprint") == extract_config_content_fingerprint(content)
-    )
+    if not (deployed and md.get("regen_config_hash") == deployed) or device.dependencies is None:
+        return False
+    try:
+        current = await run_in_executor(
+            source_fingerprint, controller._db.settings.config_dir, device.dependencies, content
+        )
+    except UnreadableDependencyError:
+        return False
+    return md.get("regen_content_fingerprint") == current
 
 
 def _unrecorded_reason(

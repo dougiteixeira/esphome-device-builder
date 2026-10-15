@@ -18,6 +18,12 @@ from esphome.storage_json import StorageJSON
 
 from ._bootloader import resolve_nrf52_bootloader
 from ._chip import resolve_chip_mcu
+from ._dependencies import (
+    LoadBatch,
+    UnreadableDependencyError,
+    read_source_fingerprint,
+    source_fingerprint,
+)
 from ._generation import (
     CAPTIVE_PORTAL_PLATFORMS,
     NETWORK_PROVIDER_COMPONENT_IDS,
@@ -50,7 +56,6 @@ from ._parsing import (
     config_has_top_level_block,
     configuration_filename,
     configuration_stem,
-    content_fingerprint_is_current,
     detect_platform_from_yaml,
     device_ap_label,
     device_uses_mqtt,
@@ -88,8 +93,10 @@ __all__ = [
     "_UNRESOLVED_SUBSTITUTION_RE",
     "EsphomeConfigUnavailableError",
     "EsphomeMeta",
+    "LoadBatch",
     "SecretRef",
     "StorageJSON",
+    "UnreadableDependencyError",
     "_extract_resolved_substitutions",
     "_has_native_wifi",
     "_infer_native_wifi",
@@ -102,7 +109,6 @@ __all__ = [
     "config_has_top_level_block",
     "configuration_filename",
     "configuration_stem",
-    "content_fingerprint_is_current",
     "detect_platform_from_yaml",
     "device_ap_label",
     "device_uses_mqtt",
@@ -130,6 +136,7 @@ __all__ = [
     "parse_esphome_meta",
     "parse_platform_from_yaml",
     "pending_changes_via_hash",
+    "read_source_fingerprint",
     "resolution_incomplete",
     "resolve_chip_mcu",
     "resolve_nrf52_bootloader",
@@ -137,6 +144,7 @@ __all__ = [
     "retarget_fallback_ap_ssid",
     "run_esphome_config",
     "safe_stat_key",
+    "source_fingerprint",
     "yaml_declares_ota_old_key",
     "yaml_has_api_encryption",
     "yaml_has_top_level_block",

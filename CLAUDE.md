@@ -674,15 +674,29 @@ against legacy behaviour before assuming the simpler version suffices.
     cache still returns literal loopback verbatim, keeping SSH-tunnel
     OTA workflows working. Out-of-band edits (git pull, external
     editor) that change the config text schedule a StorageJSON
-    regen via the `content_fingerprint` digest — compared against the
+    regen via the `content_fingerprint` digest, compared against the
     metadata store, so edits made while the dashboard was down are
-    caught on the cold-start ADDED (API-path writes already regen on
-    every save; RELOADED only re-seeds the stored value). The digest
-    is version-prefixed; a stored value from an older algorithm
-    re-seeds silently instead of regenerating, so an upgrade can't
-    spawn fleet-wide regens (#2612). An edit to a
-    referenced package or `!include`d *file* stays uncovered — it
-    changes no device YAML, so no scan event fires.
+    caught on the cold-start ADDED (a reload whose digest moved regens
+    too; a schedule while one is pending is dropped, so an API write's
+    own regen is not doubled). The digest
+    covers the device file and every file it pulls in (`!include`,
+    `packages:`, the `!secret` lookup chain): the deep load records
+    them through esphome's YAML load-listener hook
+    (`helpers/device_yaml/_dependencies.py`, thread filtered because
+    the hook is process-global), persists the sorted list as
+    `dependencies` in the metadata store, and folds their stat keys
+    into the scanner's change key, so a package edit surfaces as
+    `UPDATED` on every dependent and regens only when the digest
+    moved. A secrets file contributes only the referenced keys'
+    resolved values. The regen failure stamp and the `old_key`
+    handoff vouch carry the same digest. The digest is empty while
+    the list is unknown, so a shallow load digests the persisted list
+    and the cold start loads a device without one deep. It is
+    version-prefixed; a version bump regens every device once on its
+    next scan. Two edits stay uncovered: adding a file to an
+    `!include_dir_*` directory (the loader reports files, not
+    directories) and rotating a `!secret` referenced only from inside
+    a git package (files under the data dir are not tracked).
   - **`_http._tcp` identity fallback** (`MdnsSource._on_http_service_state_change`,
     for a configured device without `api:`). Such a device never publishes
     `_esphomelib._tcp` (behind `USE_API`); its broadcast is the `_http._tcp`
