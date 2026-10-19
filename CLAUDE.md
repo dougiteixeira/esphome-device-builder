@@ -406,17 +406,40 @@ against legacy behaviour before assuming the simpler version suffices.
 - **esphome key renames are data-driven where expressible, bespoke
   otherwise — guarded by the sync either way.** The sync classifies
   every discovered `cv.rename_key`: a *direct* pair (the validator sits
-  on a component or platform schema's own mapping) is emitted to the
+  on a component or platform schema's own mapping; a `typed_schema`
+  variant counts as the mapping itself) is emitted to the
   generated `definitions/migration_rules.index.json`, which
   `editor/migrate_config` (`helpers/migrations.py`) folds as
   data-driven rules — a plain upstream rename ships with zero
-  hand-written code. Data-driven pairs get the migration leg *only*:
+  hand-written code. A pair on the items of a platform item's depth-1
+  list (`combination`'s `sources[].coeffecient`→`coefficient`,
+  esphome/esphome#20159) ships the same way as a
+  `platform_item_list_field` rule carrying the `list_key`; the walk
+  reduces each validator's placements to `()`, `(key, "[]")` or
+  inexpressible, and the engine respells the list's items and its
+  singleton-mapping form alike (`ensure_list` takes one mapping); a
+  pair reachable along two placements stays inexpressible, and so does
+  one whose legacy key a sibling `typed_schema` variant or `cv.Any`
+  alternative still declares anywhere the engine rewrites (the list
+  items or the list's singleton mapping form), or may accept because
+  a placement at or above that scope owns every key: a mapping that
+  keeps or drops undeclared keys (`ALLOW_EXTRA`, `REMOVE_EXTRA`) or
+  has a validator key, or one the walk reached without
+  ever enumerating its keys (an opaque value, an empty wrapper); so
+  does a legacy key renamed to a different target
+  anywhere in that rewrite scope, even by a pair that is itself
+  inexpressible (no rule carries the `type:` discriminator, so it
+  would respell a valid config). A legacy key declared on the mapping
+  the rename sits on (api's `cv.Exclusive(services)`) is fine, and so
+  is one a variant or alternative beneath the rename's own chain
+  declares, since the rename applies to all of them. Data-driven pairs get the migration leg *only*:
   esphome itself still accepts the legacy spelling, and the one-click
   nudge is the repair path in place of read support or write-time
   respell (those remain bespoke-only). The block rule handles both the
   mapping and the list form of a component block, so `multi_conf`
   pairs ship data-driven too; platform-domain blocks (`- platform:`
-  lists) stay canary-guarded. Anything else (wrapper-nested pairs like api's
+  lists) and a component block's own list-item fields stay
+  canary-guarded. Anything else (wrapper-nested pairs like api's
   item discriminator, registry-node renames needing the id alias) needs
   bespoke handling: hard-coded read support, a canonical respell on any
   write touching the legacy-spelled block (per the pass-through
@@ -447,8 +470,14 @@ against legacy behaviour before assuming the simpler version suffices.
   validators on platform schemas and emits `platform_channel_colors`
   rules, so the fold stays dormant until the catalog syncs against a
   `channel_colors`-aware esphome and new adopting platforms join
-  without a code change; a fold validator outside a platform schema
-  fails the sync. **Every rule is version-gated.** One catalog serves
+  without a code change; a fold validator outside a platform schema,
+  or inside one `typed_schema` variant (the fold has no sibling-variant
+  guard), fails the sync. A rename wrapper whose named closure variable
+  moved upstream degrades to a generic closure scan, so the pairs under
+  it reach the canary as inexpressible instead of vanishing, and one
+  whose closure can't be read at all fails the sync in both walks: a
+  sentinel pair like an unreadable `rename_key`, and a nested fold; a
+  schema nested past the rename walk's depth cap fails it the same way. **Every rule is version-gated.** One catalog serves
   every installed esphome, so a rule carries `since` (the first esphome
   the sync saw it against — stamped on first sight and carried over
   from the committed artifact on every re-sync, never re-derived) and
