@@ -103,8 +103,10 @@ _DOCS_INDEX_CACHE_NAME = "esphome.io-index.mdx"
 # the version-keyed schema bundles which cache immutably.
 _DOCS_INDEX_MAX_AGE = 24 * 3600.0
 _IMAGE_BASE_URL = "https://esphome.io/images/"
-# A docs-index image the site renders as a text tile, not a file.
+# A ``badge:<Name>`` docs-index image is an SVG the site generates at
+# ``images/badges/<name>.svg`` (esphome.io's src/lib/badges.mjs).
 _DOCS_BADGE_IMAGE_PREFIX = "badge:"
+_DOCS_BADGE_IMAGE_DIR = "badges/"
 
 # CDN at schema.esphome.io rejects requests without a recognisable
 # User-Agent. Use the project name + repo URL so any traffic is easy
@@ -3093,7 +3095,9 @@ def load_image_map() -> dict[str, str]:
 
     We match those rows and produce a ``component_id -> image_url`` map
     where ``component_id`` matches our catalog ids (qualified with
-    ``<domain>.<id>`` for platform-providing components).
+    ``<domain>.<id>`` for platform-providing components). A ``badge:<Name>``
+    image maps to the site's generated badge SVG; an image file listed for
+    the same id outranks it.
 
     Cached under ``.cache/`` for ``_DOCS_INDEX_MAX_AGE`` — the index gains
     rows between releases, so a bare exists() cache silently dropped
@@ -3124,9 +3128,8 @@ def load_image_map() -> dict[str, str]:
         r'\["([^"]+)",\s*"(/components/[^"]+)",\s*"([^"]+)"',
     )
     out: dict[str, str] = {}
+    badge_keys: set[str] = set()
     for _name, path, image in pattern.findall(text):
-        if image.startswith(_DOCS_BADGE_IMAGE_PREFIX):
-            continue
         # Path examples:
         #   /components/wifi/         -> "wifi"
         #   /components/sensor/dht/   -> "sensor.dht"
@@ -3135,11 +3138,12 @@ def load_image_map() -> dict[str, str]:
         if not parts:
             continue
         component_id = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else parts[0]
-        out.setdefault(component_id, _IMAGE_BASE_URL + image)
+        url, is_badge = _docs_image_url(image)
+        _record_docs_image(out, badge_keys, component_id, url, is_badge)
         # Also store under the bare stem when only one platform exists,
         # so lookups by either id work.
         if len(parts) >= 2:
-            out.setdefault(parts[1], _IMAGE_BASE_URL + image)
+            _record_docs_image(out, badge_keys, parts[1], url, is_badge)
     _LOGGER.info("Image map built: %d components", len(out))
     return out
 
@@ -3149,6 +3153,27 @@ def load_image_map() -> dict[str, str]:
 # drifted, not an upstream image removal — emitting anyway strips
 # ``image_url`` catalog-wide (#1911 shipped that way).
 _IMAGE_MAP_SENTINELS = ("wifi", "i2c", "sensor.dht")
+
+
+def _docs_image_url(image: str) -> tuple[str, bool]:
+    """Public URL of a docs-index image value, and whether it is a badge."""
+    if image.startswith(_DOCS_BADGE_IMAGE_PREFIX):
+        name = image.removeprefix(_DOCS_BADGE_IMAGE_PREFIX).lower()
+        return f"{_IMAGE_BASE_URL}{_DOCS_BADGE_IMAGE_DIR}{name}.svg", True
+    return _IMAGE_BASE_URL + image, False
+
+
+def _record_docs_image(
+    out: dict[str, str], badge_keys: set[str], key: str, url: str, is_badge: bool
+) -> None:
+    """Keep the first image for *key*; a badge yields to a later image file."""
+    if key in out and (is_badge or key not in badge_keys):
+        return
+    out[key] = url
+    if is_badge:
+        badge_keys.add(key)
+    else:
+        badge_keys.discard(key)
 
 
 def _require_image_map(image_map: dict[str, str]) -> None:
