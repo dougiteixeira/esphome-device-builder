@@ -62,7 +62,6 @@ _BROKER_FIELDS = (
     "certificate_authority",
     "transport",
     "ws_patch",
-    "tls",
 )
 # TLS client-certificate auth has no paho path that accepts in-memory
 # PEM (``load_cert_chain`` wants files), so these blocks are skipped
@@ -532,7 +531,6 @@ def _broker_from_block(
         skip_cert_cn_check=skip_cert_cn_check,
         transport=str(mqtt.get("transport") or "tcp"),
         ws_path=str(mqtt.get("ws_path") or "/mqtt"),
-        tls=str(mqtt.get("tls") or False),
     )
 
 
