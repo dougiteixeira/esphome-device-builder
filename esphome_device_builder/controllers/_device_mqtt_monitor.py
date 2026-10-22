@@ -592,7 +592,7 @@ class DeviceMqttMonitor:
         if not (
             self._broker.transport == "wss"
             or self._broker.certificate_authority is not None
-            or self._broker.use_tls
+            or self._broker.tls
         ):
             return
 
