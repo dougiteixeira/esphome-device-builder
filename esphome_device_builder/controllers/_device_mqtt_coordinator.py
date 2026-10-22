@@ -242,7 +242,7 @@ class DeviceMqttCoordinator:
 
     def _assign_publishers(self) -> None:
         """
-        Designate one discover broadcaster per (host, port).
+        Designate one discover broadcaster per (host, port, transport, ws_path).
 
         Same-broker monitors under other logins subscribe but stay
         silent — the fleet answers every broadcast, so N logins must
@@ -264,7 +264,7 @@ class DeviceMqttCoordinator:
                 key.skip_cn,
             )
 
-        elected: dict[tuple[str, int], DeviceMqttMonitor] = {}
+        elected: dict[tuple[str, int, str, str], DeviceMqttMonitor] = {}
         for key in sorted(self._monitors, key=order):
             endpoint = (key.host, key.port, key.transport, key.ws_patch)
             elected.setdefault(endpoint, self._monitors[key])
