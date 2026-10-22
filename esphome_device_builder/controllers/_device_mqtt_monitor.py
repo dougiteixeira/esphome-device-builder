@@ -129,6 +129,8 @@ class BrokerKey(NamedTuple):
     username: str | None
     ca_digest: str | None
     skip_cn: bool
+    transport: str
+    ws_patch: str
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,8 @@ class MqttBrokerConfig:
     # the PEM itself, not a file path); truthy means connect over TLS.
     certificate_authority: str | None = None
     skip_cert_cn_check: bool = False
+    transport: str = "tcp"
+    ws_path: str = "/mqtt"
 
     @property
     def key(self) -> BrokerKey:
@@ -155,7 +159,15 @@ class MqttBrokerConfig:
         """
         ca = self.certificate_authority
         ca_digest = hashlib.sha256(ca.encode()).hexdigest() if ca else None
-        return BrokerKey(self.host, self.port, self.username, ca_digest, self.skip_cert_cn_check)
+        return BrokerKey(
+            self.host,
+            self.port,
+            self.username,
+            ca_digest,
+            self.skip_cert_cn_check,
+            self.transport,
+            self.ws_path,
+        )
 
 
 class DeviceMqttMonitor:
@@ -391,12 +403,25 @@ class DeviceMqttMonitor:
             loop.call_soon_threadsafe(signals.messages.put_nowait, msg)
 
         # Read per session, not at import: tests swap the module in.
+        websocket = self._broker.transport in ("ws", "wss")
+        paho_transport = "websockets" if websocket else "tcp"
+
         api_version = getattr(paho_mqtt, "CallbackAPIVersion", None)
+
         client: Any = (
-            paho_mqtt.Client(api_version.VERSION2, client_id=client_id, clean_session=True)
+            paho_mqtt.Client(
+                api_version.VERSION2,
+                client_id=client_id,
+                clean_session=True,
+                transport=paho_transport,
+            )
             if api_version is not None
-            else paho_mqtt.Client(client_id=client_id, clean_session=True)
+            else paho_mqtt.Client(client_id=client_id, clean_session=True, transport=paho_transport)
         )
+
+        if websocket:
+            client.ws_set_options(path=self._broker.ws_path)
+
         client.on_connect = on_connect
         client.on_subscribe = on_subscribe
         client.on_message = on_message
@@ -564,9 +589,20 @@ class DeviceMqttMonitor:
         Executor-only: the cert parse is CPU-bound OpenSSL work today,
         and becomes hidden disk I/O the day a CA loads from a file path.
         """
-        if not self._broker.certificate_authority:
+        if not (
+            self._broker.transport == "wss"
+            or self._broker.certificate_authority is not None
+            or self._broker.use_tls
+        ):
             return
-        client.tls_set_context(_build_tls_context(self._broker))
+
+        if self._broker.certificate_authority:
+            context = _build_tls_context(self._broker)
+        else:
+            context = ssl.create_default_context()
+
+        client.tls_set_context(context)
+
         if self._broker.skip_cert_cn_check:
             # Never flip ``check_hostname`` directly: both paho majors
             # then call ``ssl.match_hostname``, removed in Python 3.12.

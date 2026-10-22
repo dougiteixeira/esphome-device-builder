@@ -54,7 +54,15 @@ _DEFAULT_PORT = 1883
 
 # ``mqtt:`` fields read into an MqttBrokerConfig, each resolved through
 # the same !secret + substitution pipeline.
-_BROKER_FIELDS = ("broker", "port", "username", "password", "certificate_authority")
+_BROKER_FIELDS = (
+    "broker",
+    "port",
+    "username",
+    "password",
+    "certificate_authority",
+    "transport",
+    "ws_patch",
+)
 # TLS client-certificate auth has no paho path that accepts in-memory
 # PEM (``load_cert_chain`` wants files), so these blocks are skipped
 # with a warning instead of looping unreachable.
@@ -258,9 +266,11 @@ class DeviceMqttCoordinator:
 
         elected: dict[tuple[str, int], DeviceMqttMonitor] = {}
         for key in sorted(self._monitors, key=order):
-            elected.setdefault(key[:2], self._monitors[key])
+            endpoint = (key.host, key.port, key.transport, key.ws_patch)
+            elected.setdefault(endpoint, self._monitors[key])
         for key, monitor in self._monitors.items():
-            monitor.set_publisher(value=elected[key[:2]] is monitor)
+            endpoint = (key.host, key.port, key.transport, key.ws_patch)
+            monitor.set_publisher(value=elected[endpoint] is monitor)
 
     def _collect_brokers(self) -> tuple[list[MqttBrokerConfig], list[str]]:
         """Resolve broker configs; second element lists devices needing a scanner reload."""
@@ -519,6 +529,8 @@ def _broker_from_block(
         password=str(password) if password is not None else None,
         certificate_authority=certificate_authority,
         skip_cert_cn_check=skip_cert_cn_check,
+        transport=str(mqtt.get("transport") or "tcp"),
+        ws_path=str(mqtt.get("ws_path") or "/mqtt"),
     )
 
 
