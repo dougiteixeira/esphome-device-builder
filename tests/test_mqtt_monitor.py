@@ -219,7 +219,7 @@ def test_parse_mqtt_block_reads_custom_wss_path() -> None:
     config = parse_mqtt_block(yaml)
 
     assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "ws"
+    assert config.transport == "wss"
     assert config.ws_path == "/esphome/mqtt"
 
 
