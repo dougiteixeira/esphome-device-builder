@@ -930,14 +930,19 @@ async def test_coordinator_resolves_ws_path_from_substitution(
     assert stub_monitor.instances[0].broker.ws_path == "/esphome/mqtt"
 
 
-async def test_coordinator_unresolves_transport_from_substitution() -> None:
+async def test_coordinator_unresolved_transport_from_substitution() -> None:
     yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
+    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+
+
+async def test_coordinator_default_transport() -> None:
+    yaml = "mqtt:\n  broker: 10.0.0.5\n"
     config = parse_mqtt_block(yaml)
     assert config is not None
     assert config.transport == "tcp"
 
 
-async def test_coordinator_unresolves_ws_path_from_substitution() -> None:
+async def test_coordinator_unresolved_ws_path_from_substitution() -> None:
     yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
     config = parse_mqtt_block(yaml)
     assert config is not None
