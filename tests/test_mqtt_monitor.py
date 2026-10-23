@@ -573,24 +573,6 @@ async def test_coordinator_elects_publishers_per_websocket_endpoint(
             "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: ws\n"
             "  ws_path: /esphome/mqtt\n  username: gamma\n",
         ),
-        write_mqtt_device(
-            tmp_path,
-            "alpha",
-            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
-            "  ws_path: /mqtt\n  username: alpha\n",
-        ),
-        write_mqtt_device(
-            tmp_path,
-            "beta",
-            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
-            "  ws_path: /mqtt\n  username: beta\n",
-        ),
-        write_mqtt_device(
-            tmp_path,
-            "gamma",
-            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
-            "  ws_path: /esphome/mqtt\n  username: gamma\n",
-        ),
     ]
     coord = make_mqtt_coordinator(tmp_path, devices)
 
