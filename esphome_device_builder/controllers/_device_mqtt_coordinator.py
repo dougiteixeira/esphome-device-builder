@@ -270,7 +270,7 @@ class DeviceMqttCoordinator:
                 key.skip_cn,
             )
 
-        elected: dict[tuple[str, int, str, str], DeviceMqttMonitor] = {}
+        elected: dict[tuple[str, int, str, str | None], DeviceMqttMonitor] = {}
         for key in sorted(self._monitors, key=order):
             endpoint = (key.host, key.port, key.transport, key.ws_path)
             elected.setdefault(endpoint, self._monitors[key])
