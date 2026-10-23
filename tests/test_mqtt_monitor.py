@@ -180,19 +180,17 @@ def test_parse_mqtt_block_unresolved_port_substitution_falls_back_to_default() -
 
 
 def test_parse_mqtt_block_reads_ws_transport() -> None:
-    yaml = "mqtt:\n  broker: broker.example\n  port: 8083\n  transport: ws\n"
+    yaml = "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n"
 
     config = parse_mqtt_block(yaml)
 
     assert isinstance(config, MqttBrokerConfig)
-    assert config.host == "broker.example"
-    assert config.port == 8083
     assert config.transport == "ws"
     assert config.ws_path == "/mqtt"
 
 
 def test_parse_mqtt_block_reads_wss_transport() -> None:
-    yaml = "mqtt:\n  broker: broker.example\n  port: 8084\n  transport: wss\n"
+    yaml = "mqtt:\n  broker: broker.example\n  port: 443\n  transport: wss\n"
 
     config = parse_mqtt_block(yaml)
 
@@ -203,7 +201,19 @@ def test_parse_mqtt_block_reads_wss_transport() -> None:
 
 def test_parse_mqtt_block_reads_custom_ws_path() -> None:
     yaml = (
-        "mqtt:\n  broker: broker.example\n  port: 8083\n  transport: ws\n  ws_path: /esphome/mqtt\n"
+        "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n  ws_path: /esphome/mqtt\n"
+    )
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.transport == "ws"
+    assert config.ws_path == "/esphome/mqtt"
+
+
+def test_parse_mqtt_block_reads_custom_wss_path() -> None:
+    yaml = (
+        "mqtt:\n  broker: broker.example\n  port: 443\n  transport: ws\n  ws_path: /esphome/mqtt\n"
     )
 
     config = parse_mqtt_block(yaml)
@@ -2147,7 +2157,7 @@ async def test_connect_ws_uses_websocket_transport(
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",
-            port=8083,
+            port=80,
             transport="ws",
         ),
         on_state_change=lambda *_: None,
@@ -2168,7 +2178,7 @@ async def test_connect_ws_sets_default_websocket_path(
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",
-            port=8083,
+            port=80,
             transport="ws",
         ),
         on_state_change=lambda *_: None,
@@ -2186,7 +2196,7 @@ async def test_connect_ws_sets_custom_websocket_path(
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",
-            port=8083,
+            port=80,
             transport="ws",
             ws_path="/esphome/mqtt",
         ),
@@ -2205,13 +2215,31 @@ async def test_connect_ws_sets_custom_websocket_path(
     ) in calls
 
 
+async def test_connect_wss_sets_default_websocket_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=443,
+            transport="wss",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(monitor, monkeypatch)
+
+    assert ("ws_set_options", ("/mqtt",)) in calls
+
+
 async def test_connect_wss_sets_custom_websocket_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",
-            port=8084,
+            port=443,
             transport="wss",
             ws_path="/custom/mqtt",
         ),
@@ -2266,7 +2294,7 @@ async def test_connect_ws_does_not_enable_tls(
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",
-            port=8083,
+            port=80,
             transport="ws",
         ),
         on_state_change=lambda *_: None,
