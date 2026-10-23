@@ -875,6 +875,51 @@ async def test_coordinator_resolves_port_from_substitution(
     assert stub_monitor.instances[0].broker.port == 8883
 
 
+async def test_coordinator_resolves_ws_transport_from_substitution(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = (
+        "substitutions:\n  mqtt_transport: 'ws'\n"
+        "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
+    )
+    devices = [write_mqtt_device(tmp_path, "alpha", yaml)]
+    coord = make_mqtt_coordinator(tmp_path, devices)
+    await coord.reconcile()
+    assert coord.active_brokers == 1
+    assert stub_monitor.instances[0].broker.transport == "ws"
+
+
+async def test_coordinator_resolves_wss_transport_from_substitution(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = (
+        "substitutions:\n  mqtt_transport: 'wss'\n"
+        "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
+    )
+    devices = [write_mqtt_device(tmp_path, "alpha", yaml)]
+    coord = make_mqtt_coordinator(tmp_path, devices)
+    await coord.reconcile()
+    assert coord.active_brokers == 1
+    assert stub_monitor.instances[0].broker.transport == "wss"
+
+
+async def test_coordinator_resolves_ws_path_from_substitution(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = (
+        "substitutions:\n  mqtt_ws_path: '/esphome/mqtt'\n"
+        "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
+    )
+    devices = [write_mqtt_device(tmp_path, "alpha", yaml)]
+    coord = make_mqtt_coordinator(tmp_path, devices)
+    await coord.reconcile()
+    assert coord.active_brokers == 1
+    assert stub_monitor.instances[0].broker.ws_path == "/esphome/mqtt"
+
+
 async def test_coordinator_skips_unresolved_substitution(
     tmp_path: Path,
     stub_monitor: type[RecordingMonitor],
