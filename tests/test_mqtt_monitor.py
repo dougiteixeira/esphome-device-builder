@@ -1899,11 +1899,16 @@ class _FakePahoClient:
 
     connack_rc = 0
 
-    def __init__(self, client_id: str = "", clean_session: bool = True) -> None:
+    def __init__(
+        self,
+        client_id: str = "",
+        clean_session: bool = True,
+        transport: str = "tcp",
+    ) -> None:
         self.on_connect: Any = None
         self.on_subscribe: Any = None
         self.on_message: Any = None
-        self._record("init", (client_id, clean_session))
+        self._record("init", (client_id, clean_session, transport))
 
     def _record(self, op: str, args: tuple[Any, ...]) -> None:
         return None
@@ -1967,9 +1972,13 @@ class _FakePahoV2Client(_FakePahoClient):
     suback = (_FakeReasonCode(0, "Granted QoS 0"),)
 
     def __init__(
-        self, callback_api_version: Any, client_id: str = "", clean_session: bool = True
+        self,
+        callback_api_version: Any,
+        client_id: str = "",
+        clean_session: bool = True,
+        transport: str = "tcp",
     ) -> None:
-        super().__init__(client_id, clean_session)
+        super().__init__(client_id, clean_session, transport=transport)
         self._record("api_version", (callback_api_version,))
 
     def loop_start(self) -> None:
@@ -2207,8 +2216,10 @@ async def test_reconnect_subscribe_failure_tears_the_session_down(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(self, client_id: str = "", clean_session: bool = True) -> None:
-            super().__init__(client_id, clean_session)
+        def __init__(
+            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
+        ) -> None:
+            super().__init__(client_id, clean_session, transport)
             self.subscribe_calls = 0
             instances.append(self)
 
@@ -2249,8 +2260,10 @@ async def test_acl_denied_subscription_tears_the_session_down(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(self, client_id: str = "", clean_session: bool = True) -> None:
-            super().__init__(client_id, clean_session)
+        def __init__(
+            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
+        ) -> None:
+            super().__init__(client_id, clean_session, transport)
             instances.append(self)
 
         def publish(self, topic: str, payload: Any = None, retain: bool = False) -> _PublishInfo:
@@ -2307,8 +2320,10 @@ async def test_missing_suback_on_reconnect_fails_the_session(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(self, client_id: str = "", clean_session: bool = True) -> None:
-            super().__init__(client_id, clean_session)
+        def __init__(
+            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
+        ) -> None:
+            super().__init__(client_id, clean_session, transport)
             self.subscribe_calls = 0
             instances.append(self)
 
@@ -2520,8 +2535,10 @@ async def test_reconnect_refires_subscribe_via_on_connect(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(self, client_id: str = "", clean_session: bool = True) -> None:
-            super().__init__(client_id, clean_session)
+        def __init__(
+            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
+        ) -> None:
+            super().__init__(client_id, clean_session, transport)
             instances.append(self)
 
         def subscribe(self, topic: str) -> tuple[int, int]:
