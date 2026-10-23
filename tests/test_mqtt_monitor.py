@@ -213,7 +213,7 @@ def test_parse_mqtt_block_reads_custom_ws_path() -> None:
 
 def test_parse_mqtt_block_reads_custom_wss_path() -> None:
     yaml = (
-        "mqtt:\n  broker: broker.example\n  port: 443\n  transport: ws\n  ws_path: /esphome/mqtt\n"
+        "mqtt:\n  broker: broker.example\n  port: 443\n  transport: wss\n  ws_path: /esphome/mqtt\n"
     )
 
     config = parse_mqtt_block(yaml)
