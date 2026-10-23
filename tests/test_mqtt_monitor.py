@@ -2205,57 +2205,6 @@ async def test_connect_ws_sets_custom_websocket_path(
     ) in calls
 
 
-async def test_connect_ws_does_not_enable_tls(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=8083,
-            transport="ws",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(
-        monitor,
-        monkeypatch,
-    )
-
-    operation_names = [operation for operation, _arguments in calls]
-
-    assert "ws_set_options" in operation_names
-    assert "tls_set_context" not in operation_names
-    assert "tls_insecure_set" not in operation_names
-
-
-async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pin the ``tls_insecure_set`` path.
-
-    A direct ``check_hostname`` flip hits the ``ssl.match_hostname``
-    removal on Python 3.12+.
-    """
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=8883,
-            certificate_authority=_TEST_CA_PEM,
-            skip_cert_cn_check=True,
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-    calls = await _drive_one_session(monitor, monkeypatch)
-    op_names = [c[0] for c in calls]
-    assert (
-        op_names.index("tls_set_context")
-        < op_names.index("tls_insecure_set")
-        < op_names.index("connect")
-    )
-    assert ("tls_insecure_set", (True,)) in calls
-
-
 async def test_connect_wss_sets_custom_websocket_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2309,6 +2258,57 @@ async def test_connect_tcp_does_not_set_websocket_options(
     ) in calls
 
     assert not any(operation == "ws_set_options" for operation, _arguments in calls)
+
+
+async def test_connect_ws_does_not_enable_tls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8083,
+            transport="ws",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(
+        monitor,
+        monkeypatch,
+    )
+
+    operation_names = [operation for operation, _arguments in calls]
+
+    assert "ws_set_options" in operation_names
+    assert "tls_set_context" not in operation_names
+    assert "tls_insecure_set" not in operation_names
+
+
+async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the ``tls_insecure_set`` path.
+
+    A direct ``check_hostname`` flip hits the ``ssl.match_hostname``
+    removal on Python 3.12+.
+    """
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8883,
+            certificate_authority=_TEST_CA_PEM,
+            skip_cert_cn_check=True,
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+    calls = await _drive_one_session(monitor, monkeypatch)
+    op_names = [c[0] for c in calls]
+    assert (
+        op_names.index("tls_set_context")
+        < op_names.index("tls_insecure_set")
+        < op_names.index("connect")
+    )
+    assert ("tls_insecure_set", (True,)) in calls
 
 
 async def test_run_treats_ssl_error_as_expected_reconnect(
