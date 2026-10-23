@@ -46,6 +46,7 @@ from ._device_mqtt_monitor import (
     IPCallback,
     MqttBrokerConfig,
     StateCallback,
+    _BrokerEndpoint,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -270,13 +271,11 @@ class DeviceMqttCoordinator:
                 key.skip_cn,
             )
 
-        elected: dict[tuple[str, int, str, str | None], DeviceMqttMonitor] = {}
+        elected: dict[_BrokerEndpoint, DeviceMqttMonitor] = {}
         for key in sorted(self._monitors, key=order):
-            endpoint = (key.host, key.port, key.transport, key.ws_path)
-            elected.setdefault(endpoint, self._monitors[key])
+            elected.setdefault(key.endpoint, self._monitors[key])
         for key, monitor in self._monitors.items():
-            endpoint = (key.host, key.port, key.transport, key.ws_path)
-            monitor.set_publisher(value=elected[endpoint] is monitor)
+            monitor.set_publisher(value=elected[key.endpoint] is monitor)
 
     def _collect_brokers(self) -> tuple[list[MqttBrokerConfig], list[str]]:
         """Resolve broker configs; second element lists devices needing a scanner reload."""

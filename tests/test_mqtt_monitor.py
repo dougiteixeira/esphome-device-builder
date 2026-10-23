@@ -550,6 +550,58 @@ async def test_coordinator_designates_one_publisher_per_broker(
     assert by_login[("192.168.0.2", None)].is_publisher is True
 
 
+async def test_coordinator_elects_publishers_per_websocket_endpoint(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    devices = [
+        write_mqtt_device(
+            tmp_path,
+            "alpha",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: ws\n"
+            "  ws_path: /mqtt\n  username: alpha\n",
+        ),
+        write_mqtt_device(
+            tmp_path,
+            "beta",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: ws\n"
+            "  ws_path: /mqtt\n  username: beta\n",
+        ),
+        write_mqtt_device(
+            tmp_path,
+            "gamma",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: ws\n"
+            "  ws_path: /esphome/mqtt\n  username: gamma\n",
+        ),
+        write_mqtt_device(
+            tmp_path,
+            "alpha",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
+            "  ws_path: /mqtt\n  username: alpha\n",
+        ),
+        write_mqtt_device(
+            tmp_path,
+            "beta",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
+            "  ws_path: /mqtt\n  username: beta\n",
+        ),
+        write_mqtt_device(
+            tmp_path,
+            "gamma",
+            "mqtt:\n  broker: 192.168.0.1\n  port: 80\n  transport: wss\n"
+            "  ws_path: /esphome/mqtt\n  username: gamma\n",
+        ),
+    ]
+    coord = make_mqtt_coordinator(tmp_path, devices)
+
+    await coord.reconcile()
+
+    by_user = {monitor.broker.username: monitor for monitor in stub_monitor.instances}
+    assert by_user["alpha"].is_publisher is True
+    assert by_user["beta"].is_publisher is False
+    assert by_user["gamma"].is_publisher is True
+
+
 async def test_coordinator_promotes_publisher_when_broadcaster_drops(
     tmp_path: Path,
     stub_monitor: type[RecordingMonitor],

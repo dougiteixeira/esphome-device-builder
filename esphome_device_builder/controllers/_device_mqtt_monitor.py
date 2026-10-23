@@ -133,6 +133,13 @@ class BrokerKey(NamedTuple):
     transport: str
     ws_path: str | None
 
+    @property
+    def endpoint(self) -> _BrokerEndpoint:
+        return self.host, self.port, self.transport, self.ws_path
+
+
+_BrokerEndpoint = tuple[str, int, str, str | None]
+
 
 @dataclass(frozen=True)
 class MqttBrokerConfig:
@@ -605,7 +612,7 @@ class DeviceMqttMonitor:
 
     def _apply_tls(self, client: Any) -> None:
         """
-        Wrap *client* in a TLS context when the broker carries a CA.
+        Wrap *client* in a TLS context when the broker carries a CA or when the transport is `wss`.
 
         Executor-only: the cert parse is CPU-bound OpenSSL work today,
         and becomes hidden disk I/O the day a CA loads from a file path.
