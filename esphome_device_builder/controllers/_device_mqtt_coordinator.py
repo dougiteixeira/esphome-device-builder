@@ -51,6 +51,8 @@ from ._device_mqtt_monitor import (
 _LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_PORT = 1883
+_DEFAULT_TRANSPORT = "tcp"
+_DEFAULT_WS_PATH = "/mqtt"
 
 # ``mqtt:`` fields read into an MqttBrokerConfig, each resolved through
 # the same !secret + substitution pipeline.
@@ -504,14 +506,6 @@ def _broker_from_block(
     # bogus host and loop the monitor on DNS failure.
     if isinstance(host, str) and _UNRESOLVED_SUBSTITUTION_RE.search(host):
         return None
-    for field in ("transport", "ws_path"):
-        value = mqtt.get(field)
-        if (
-            field in raw_mqtt
-            and isinstance(value, str)
-            and _UNRESOLVED_SUBSTITUTION_RE.search(value)
-        ):
-            return None
     certificate_authority = mqtt.get("certificate_authority") or None
     # esphome's ``certificate_authority`` is PEM content; a file path or
     # a corrupt cert would hand paho garbage and loop on SSLError forever.
@@ -535,6 +529,24 @@ def _broker_from_block(
         port = _DEFAULT_PORT
     username = mqtt.get("username") or None
     password = mqtt.get("password") or None
+
+    transport_raw = mqtt.get("transport") or _DEFAULT_TRANSPORT
+    if isinstance(transport_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(transport_raw):
+        transport = _DEFAULT_TRANSPORT
+    else:
+        transport = transport_raw.lower()
+
+    ws_path_raw = mqtt.get("ws_path")
+    if transport in ("wss", "ws"):
+        if (
+            isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw)
+        ) or ws_path_raw is None:
+            ws_path = _DEFAULT_WS_PATH
+        else:
+            ws_path = ws_path_raw
+    else:
+        ws_path = None
+
     return MqttBrokerConfig(
         host=str(host),
         port=port,
@@ -542,8 +554,8 @@ def _broker_from_block(
         password=str(password) if password is not None else None,
         certificate_authority=certificate_authority,
         skip_cert_cn_check=skip_cert_cn_check,
-        transport=str(mqtt.get("transport") or "tcp").lower(),
-        ws_path=str(mqtt.get("ws_path") or "/mqtt"),
+        transport=transport,
+        ws_path=ws_path,
     )
 
 

@@ -179,6 +179,16 @@ def test_parse_mqtt_block_unresolved_port_substitution_falls_back_to_default() -
     assert config.port == 1883
 
 
+def test_parse_mqtt_block_reads_tcp_transport_without_ws_path() -> None:
+    yaml = "mqtt:\n  broker: broker.example\n  port: 80\n  transport: tcp\n"
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.transport == "tcp"
+    assert config.ws_path is None
+
+
 def test_parse_mqtt_block_reads_ws_transport() -> None:
     yaml = "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n"
 
@@ -920,20 +930,18 @@ async def test_coordinator_resolves_ws_path_from_substitution(
     assert stub_monitor.instances[0].broker.ws_path == "/esphome/mqtt"
 
 
-async def test_coordinator_unresolves_wss_transport_from_substitution(
-    tmp_path: Path,
-    stub_monitor: type[RecordingMonitor],
-) -> None:
+async def test_coordinator_unresolves_transport_from_substitution() -> None:
     yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
-    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+    config = parse_mqtt_block(yaml)
+    assert config is not None
+    assert config.transport == "tcp"
 
 
-async def test_coordinator_unresolves_ws_path_from_substitution(
-    tmp_path: Path,
-    stub_monitor: type[RecordingMonitor],
-) -> None:
+async def test_coordinator_unresolves_ws_path_from_substitution() -> None:
     yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
-    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+    config = parse_mqtt_block(yaml)
+    assert config is not None
+    assert config.ws_path == "/mqtt"
 
 
 async def test_coordinator_skips_unresolved_substitution(
