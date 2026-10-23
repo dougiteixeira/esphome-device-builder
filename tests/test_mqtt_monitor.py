@@ -977,7 +977,7 @@ async def test_coordinator_default_transport() -> None:
 
 
 async def test_coordinator_invalid_transport() -> None:
-    yaml = "mqtt:\n  broker: 10.0.0.5\n transport: tls"
+    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: tls"
     config = parse_mqtt_block(yaml)
     assert config is None
 
