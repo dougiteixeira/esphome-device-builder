@@ -130,7 +130,7 @@ class BrokerKey(NamedTuple):
     ca_digest: str | None
     skip_cn: bool
     transport: str
-    ws_patch: str
+    ws_path: str
 
 
 @dataclass(frozen=True)

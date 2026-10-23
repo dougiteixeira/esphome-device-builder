@@ -61,7 +61,7 @@ _BROKER_FIELDS = (
     "password",
     "certificate_authority",
     "transport",
-    "ws_patch",
+    "ws_path",
 )
 # TLS client-certificate auth has no paho path that accepts in-memory
 # PEM (``load_cert_chain`` wants files), so these blocks are skipped
@@ -266,10 +266,10 @@ class DeviceMqttCoordinator:
 
         elected: dict[tuple[str, int, str, str], DeviceMqttMonitor] = {}
         for key in sorted(self._monitors, key=order):
-            endpoint = (key.host, key.port, key.transport, key.ws_patch)
+            endpoint = (key.host, key.port, key.transport, key.ws_path)
             elected.setdefault(endpoint, self._monitors[key])
         for key, monitor in self._monitors.items():
-            endpoint = (key.host, key.port, key.transport, key.ws_patch)
+            endpoint = (key.host, key.port, key.transport, key.ws_path)
             monitor.set_publisher(value=elected[endpoint] is monitor)
 
     def _collect_brokers(self) -> tuple[list[MqttBrokerConfig], list[str]]:
