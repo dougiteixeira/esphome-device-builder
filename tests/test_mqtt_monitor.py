@@ -920,6 +920,22 @@ async def test_coordinator_resolves_ws_path_from_substitution(
     assert stub_monitor.instances[0].broker.ws_path == "/esphome/mqtt"
 
 
+async def test_coordinator_unresolves_wss_transport_from_substitution(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
+    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+
+
+async def test_coordinator_unresolves_ws_path_from_substitution(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
+    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+
+
 async def test_coordinator_skips_unresolved_substitution(
     tmp_path: Path,
     stub_monitor: type[RecordingMonitor],
