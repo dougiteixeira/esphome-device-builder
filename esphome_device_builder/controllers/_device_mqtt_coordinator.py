@@ -505,7 +505,7 @@ def _broker_from_block(
     if isinstance(host, str) and _UNRESOLVED_SUBSTITUTION_RE.search(host):
         return None
     for field in ("transport", "ws_path"):
-        value = mqtt.get("field")
+        value = mqtt.get(field)
         if (
             field in raw_mqtt
             and isinstance(value, str)
