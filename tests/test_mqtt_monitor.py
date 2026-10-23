@@ -179,6 +179,40 @@ def test_parse_mqtt_block_unresolved_port_substitution_falls_back_to_default() -
     assert config.port == 1883
 
 
+def test_parse_mqtt_block_reads_ws_transport() -> None:
+    yaml = "mqtt:\n  broker: broker.example\n  port: 8083\n  transport: ws\n"
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.host == "broker.example"
+    assert config.port == 8083
+    assert config.transport == "ws"
+    assert config.ws_path == "/mqtt"
+
+
+def test_parse_mqtt_block_reads_wss_transport() -> None:
+    yaml = "mqtt:\n  broker: broker.example\n  port: 8084\n  transport: wss\n"
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.transport == "wss"
+    assert config.ws_path == "/mqtt"
+
+
+def test_parse_mqtt_block_reads_custom_ws_path() -> None:
+    yaml = (
+        "mqtt:\n  broker: broker.example\n  port: 8083\n  transport: ws\n  ws_path: /esphome/mqtt\n"
+    )
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.transport == "ws"
+    assert config.ws_path == "/esphome/mqtt"
+
+
 # A real (throwaway) self-signed certificate so ``load_verify_locations``
 # accepts it in the TLS-context tests; the parse tests only need the
 # PEM marker.
@@ -1922,6 +1956,9 @@ class _FakePahoClient:
     def tls_insecure_set(self, value: bool) -> None:
         self._record("tls_insecure_set", (value,))
 
+    def ws_set_options(self, path: str = "/mqtt") -> None:
+        self._record("ws_set_options", (path,))
+
     def connect(self, host: str, port: int) -> None:
         self._record("connect", (host, port))
 
@@ -2104,6 +2141,95 @@ async def test_connect_wraps_ca_broker_in_tls_context(monkeypatch: pytest.Monkey
     assert len(context.get_ca_certs()) == 1
 
 
+async def test_connect_ws_uses_websocket_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8083,
+            transport="ws",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(monitor, monkeypatch)
+
+    assert (
+        "init",
+        ("test-id", True, "websockets"),
+    ) in calls
+
+
+async def test_connect_ws_sets_default_websocket_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8083,
+            transport="ws",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(monitor, monkeypatch)
+
+    assert ("ws_set_options", ("/mqtt",)) in calls
+
+
+async def test_connect_ws_sets_custom_websocket_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8083,
+            transport="ws",
+            ws_path="/esphome/mqtt",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(
+        monitor,
+        monkeypatch,
+    )
+
+    assert (
+        "ws_set_options",
+        ("/esphome/mqtt",),
+    ) in calls
+
+
+async def test_connect_ws_does_not_enable_tls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8083,
+            transport="ws",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(
+        monitor,
+        monkeypatch,
+    )
+
+    operation_names = [operation for operation, _arguments in calls]
+
+    assert "ws_set_options" in operation_names
+    assert "tls_set_context" not in operation_names
+    assert "tls_insecure_set" not in operation_names
+
+
 async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin the ``tls_insecure_set`` path.
 
@@ -2128,6 +2254,61 @@ async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.Monke
         < op_names.index("connect")
     )
     assert ("tls_insecure_set", (True,)) in calls
+
+
+async def test_connect_wss_sets_custom_websocket_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=8084,
+            transport="wss",
+            ws_path="/custom/mqtt",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(
+        monitor,
+        monkeypatch,
+    )
+
+    assert (
+        "ws_set_options",
+        ("/custom/mqtt",),
+    ) in calls
+
+    operation_names = [operation for operation, _arguments in calls]
+
+    assert "tls_set_context" in operation_names
+
+
+async def test_connect_tcp_does_not_set_websocket_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=1883,
+            transport="tcp",
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(
+        monitor,
+        monkeypatch,
+    )
+
+    assert (
+        "init",
+        ("test-id", True, "tcp"),
+    ) in calls
+
+    assert not any(operation == "ws_set_options" for operation, _arguments in calls)
 
 
 async def test_run_treats_ssl_error_as_expected_reconnect(
