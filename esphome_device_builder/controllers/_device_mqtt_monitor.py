@@ -276,7 +276,12 @@ class DeviceMqttMonitor:
 
     async def _run(self) -> None:
         client_id = f"esphome-dashboard-{secrets.token_hex(6)}"
-        _LOGGER.info("MQTT discovery starting — broker=%s:%s", self._broker.host, self._broker.port)
+        _LOGGER.info(
+            "MQTT discovery starting — broker=%s://%s:%s",
+            self._broker.transport,
+            self._broker.host,
+            self._broker.port,
+        )
 
         while True:
             try:
@@ -316,17 +321,23 @@ class DeviceMqttMonitor:
             # checks the YAML, not the network.
             if isinstance(err, ssl.SSLError):
                 first = (
-                    "TLS handshake with MQTT broker %s:%s failed (%s) — check "
+                    "TLS handshake with MQTT broker %s://%s:%s failed (%s) — check "
                     "certificate_authority / skip_cert_cn_check — reconnecting in %ss"
                 )
-                repeat = "TLS handshake with MQTT broker %s:%s still failing (%s) — retrying in %ss"
+                repeat = (
+                    "TLS handshake with MQTT broker %s://%s:%s still failing (%s) — retrying in %ss"
+                )
             else:
-                first = "MQTT broker %s:%s unreachable (%s) — reconnecting in %ss"
-                repeat = "MQTT broker %s:%s still unreachable (%s) — reconnecting in %ss"
+                first = "MQTT broker %s://%s:%s unreachable (%s) — reconnecting in %ss"
+                repeat = "MQTT broker %s://%s:%s still unreachable (%s) — reconnecting in %ss"
             if self._connect_error_logged:
-                _LOGGER.debug(repeat, self._broker.host, self._broker.port, err, delay)
+                _LOGGER.debug(
+                    repeat, self._broker.transport, self._broker.host, self._broker.port, err, delay
+                )
             else:
-                _LOGGER.warning(first, self._broker.host, self._broker.port, err, delay)
+                _LOGGER.warning(
+                    first, self._broker.transport, self._broker.host, self._broker.port, err, delay
+                )
                 self._connect_error_logged = True
             return
 
@@ -337,7 +348,8 @@ class DeviceMqttMonitor:
         # without flipping the log level.
         if self._unexpected_error_logged:
             _LOGGER.debug(
-                "MQTT broker %s:%s error %s: %s (suppressed traceback) — reconnecting in %ss",
+                "MQTT broker %s://%s:%s error %s: %s (suppressed traceback) — reconnecting in %ss",
+                self._broker.transport,
                 self._broker.host,
                 self._broker.port,
                 type(err).__name__,
@@ -346,7 +358,8 @@ class DeviceMqttMonitor:
             )
             return
         _LOGGER.error(
-            "MQTT broker %s:%s error — reconnecting in %ss",
+            "MQTT broker %s://%s:%s error — reconnecting in %ss",
+            self._broker.transport,
             self._broker.host,
             self._broker.port,
             delay,
@@ -446,7 +459,12 @@ class DeviceMqttMonitor:
             if signals.errors:
                 raise ConnectionError(signals.errors[0])
 
-            _LOGGER.info("MQTT connected to %s:%s", self._broker.host, self._broker.port)
+            _LOGGER.info(
+                "MQTT connected to %s://%s:%s",
+                self._broker.transport,
+                self._broker.host,
+                self._broker.port,
+            )
             self._set_connected(value=True)
 
             async def raise_when_session_failed() -> None:
@@ -560,7 +578,8 @@ class DeviceMqttMonitor:
             _LOGGER.debug("discover broadcast still failing (rc=%s)", info.rc)
         else:
             _LOGGER.warning(
-                "Discover broadcast to %s:%s failed (rc=%s) — device aging paused",
+                "Discover broadcast to %s://%s:%s failed (rc=%s) — device aging paused",
+                self._broker.transport,
                 self._broker.host,
                 self._broker.port,
                 info.rc,

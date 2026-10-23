@@ -202,7 +202,11 @@ class DeviceMqttCoordinator:
         """Stop monitors for logins no longer referenced; False when ``stop()`` intervened."""
         for key in set(self._monitors) - wanted:
             _LOGGER.info(
-                "Stopping MQTT monitor for %s:%s user %r", key.host, key.port, key.username
+                "Stopping MQTT monitor for %s://%s:%s user %r",
+                key.transport,
+                key.host,
+                key.port,
+                key.username,
             )
             # Deregister only after a completed teardown so a cancel
             # mid-stop can't orphan a started monitor outside the
@@ -409,9 +413,10 @@ class DeviceMqttCoordinator:
         self._warn_once(
             self._conflict_logged,
             broker.key,
-            "Multiple devices reference broker %s:%s as user %r with different passwords — "
+            "Multiple devices reference broker %s://%s:%s as user %r with different passwords — "
             "using the password from the first device",
-            "Broker %s:%s user %r still referenced with different passwords — using the first",
+            "Broker %s://%s:%s user %r still referenced with different passwords — using the first",
+            broker.transport,
             broker.host,
             broker.port,
             broker.username,
