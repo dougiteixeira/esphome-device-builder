@@ -534,7 +534,7 @@ def _broker_from_block(
         password=str(password) if password is not None else None,
         certificate_authority=certificate_authority,
         skip_cert_cn_check=skip_cert_cn_check,
-        transport=str(mqtt.get("transport") or "tcp"),
+        transport=str(mqtt.get("transport") or "tcp").lower(),
         ws_path=str(mqtt.get("ws_path") or "/mqtt"),
     )
 
