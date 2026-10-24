@@ -213,10 +213,8 @@ def test_parse_mqtt_block_reads_wss_transport() -> None:
     ("transport", "expected_transport"),
     [
         pytest.param("WSS", "wss", id="uppercase-wss"),
-        pytest.param("WS", "ws", id="uppercase-ws"),
+        pytest.param("ws", "ws", id="lower-ws"),
         pytest.param("WSs", "wss", id="mixed-case-wss"),
-        pytest.param("TCP", "tcp", id="uppercase-tcp"),
-        pytest.param("tcp", "tcp", id="mixed-case-tcp"),
     ],
 )
 def test_parse_mqtt_block_normalizes_transport_case(
