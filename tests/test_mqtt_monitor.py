@@ -1008,6 +1008,36 @@ async def test_coordinator_resolves_ws_path_from_package_seed(
     assert stub_monitor.instances[0].broker.ws_path == "/package/mqtt"
 
 
+async def test_coordinator_inherits_transport_and_ws_path_from_package(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = "mqtt:\n  broker: main.example\n  port: 1883\n"
+    device = write_mqtt_device(tmp_path, "alpha", yaml)
+    device.mqtt_extract = build_test_extract(
+        tmp_path / "alpha.yaml",
+        (tmp_path / "alpha.yaml").read_text(),
+        {
+            "mqtt": {
+                "broker": "package.example",
+                "port": 443,
+                "transport": "wss",
+                "ws_path": "/package/mqtt",
+            }
+        },
+    )
+    coord = make_mqtt_coordinator(tmp_path, [device])
+
+    await coord.reconcile()
+
+    assert coord.active_brokers == 1
+    broker = stub_monitor.instances[0].broker
+    assert broker.host == "main.example"
+    assert broker.port == 1883
+    assert broker.transport == "wss"
+    assert broker.ws_path == "/package/mqtt"
+
+
 async def test_coordinator_unresolved_transport_from_substitution() -> None:
     assert (
         _broker_from_mqtt_dict({"broker": "10.0.0.5", "transport": "${mqtt_transport}"}, {}, {})

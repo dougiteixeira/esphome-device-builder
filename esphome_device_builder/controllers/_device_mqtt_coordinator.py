@@ -307,9 +307,10 @@ class DeviceMqttCoordinator:
                 _LOGGER.debug(_UNREADABLE_DEBUG, device.configuration)
                 continue
             if (extract := device.mqtt_extract) is not None and _extract_fresh(extract, yaml_stat):
-                broker = _broker_from_mqtt_dict(
-                    extract.main_block, secrets_map, extract.main_substitutions
+                mqtt_block = _merge_package_mqtt_defaults(
+                    extract.main_block, extract.resolved_block
                 )
+                broker = _broker_from_mqtt_dict(mqtt_block, secrets_map, extract.main_substitutions)
             else:
                 # Scan raced an edit (or the device predates the scanner
                 # carrying extractions) — fall back to reading the file;
@@ -483,6 +484,16 @@ def _broker_from_mqtt_dict(
     if any(f in mqtt for f in _CLIENT_CERT_FIELDS):
         return CLIENT_CERT_UNSUPPORTED
     return _broker_from_block(mqtt, secrets_map, subs)
+
+
+def _merge_package_mqtt_defaults(
+    main_block: dict[str, Any] | None,
+    resolved_block: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Fill absent main-block fields from a fresh package-resolved MQTT block."""
+    if main_block is None or resolved_block is None:
+        return main_block
+    return resolved_block | main_block
 
 
 def _broker_from_block(
