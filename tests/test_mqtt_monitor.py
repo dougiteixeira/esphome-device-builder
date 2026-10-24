@@ -983,6 +983,31 @@ async def test_coordinator_resolves_ws_path_from_substitution(
     assert stub_monitor.instances[0].broker.ws_path == "/esphome/mqtt"
 
 
+async def test_coordinator_resolves_ws_path_from_package_seed(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${package_ws_path}\n"
+    device = write_mqtt_device(tmp_path, "alpha", yaml)
+    device.mqtt_extract = build_test_extract(
+        tmp_path / "alpha.yaml",
+        (tmp_path / "alpha.yaml").read_text(),
+        {
+            "mqtt": {
+                "broker": "10.0.0.5",
+                "transport": "ws",
+                "ws_path": "/package/mqtt",
+            }
+        },
+    )
+    coord = make_mqtt_coordinator(tmp_path, [device])
+
+    await coord.reconcile()
+
+    assert coord.active_brokers == 1
+    assert stub_monitor.instances[0].broker.ws_path == "/package/mqtt"
+
+
 async def test_coordinator_unresolved_transport_from_substitution() -> None:
     assert (
         _broker_from_mqtt_dict({"broker": "10.0.0.5", "transport": "${mqtt_transport}"}, {}, {})
@@ -1006,8 +1031,7 @@ async def test_coordinator_invalid_transport() -> None:
 async def test_coordinator_unresolved_ws_path_from_substitution() -> None:
     yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
     config = parse_mqtt_block(yaml)
-    assert config is not None
-    assert config.ws_path == "/mqtt"
+    assert config is None
 
 
 async def test_coordinator_skips_unresolved_substitution(

@@ -499,11 +499,9 @@ def _broker_from_block(
         for k in _BROKER_FIELDS
     }
     host = mqtt.get("broker")
-    if not host:
-        return None
     # An unresolved ``${var}`` / ``$var`` token would otherwise become a
     # bogus host and loop the monitor on DNS failure.
-    if isinstance(host, str) and _UNRESOLVED_SUBSTITUTION_RE.search(host):
+    if host is None or (isinstance(host, str) and _UNRESOLVED_SUBSTITUTION_RE.search(host)):
         return None
     certificate_authority = mqtt.get("certificate_authority") or None
     # esphome's ``certificate_authority`` is PEM content; a file path or
@@ -536,12 +534,9 @@ def _broker_from_block(
         return None
 
     ws_path_raw = mqtt.get("ws_path")
-    if transport not in _WEBSOCKET_TRANSPORTS or (
-        isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw)
-    ):
-        ws_path = None
-    else:
-        ws_path = ws_path_raw
+    if isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw):
+        return None
+    ws_path = ws_path_raw if transport in _WEBSOCKET_TRANSPORTS else None
 
     return MqttBrokerConfig(
         host=str(host),
