@@ -320,7 +320,13 @@ class DeviceMqttCoordinator:
                 except OSError:
                     _LOGGER.debug(_UNREADABLE_DEBUG, device.configuration)
                     continue
-                broker = parse_mqtt_block(yaml_content, secrets_map)
+                main_block, main_substitutions = extract_mqtt_block(yaml_content)
+                if extract is not None and _stale_extract_has_inherited_connection_options(
+                    extract, main_block
+                ):
+                    needs_reload.append(device.configuration)
+                    continue
+                broker = _broker_from_mqtt_dict(main_block, secrets_map, main_substitutions)
             if broker is None:
                 cache_key = MqttFreshnessStamp(
                     yaml_stat.st_mtime_ns, yaml_stat.st_size, *secrets_key
@@ -494,6 +500,18 @@ def _merge_package_mqtt_defaults(
     if main_block is None or resolved_block is None:
         return main_block
     return resolved_block | main_block
+
+
+def _stale_extract_has_inherited_connection_options(
+    extract: DeviceMqttExtract,
+    main_block: dict[str, Any] | None,
+) -> bool:
+    """Whether a stale package seed may supply transport or WebSocket path."""
+    if main_block is None or extract.resolved_block is None:
+        return False
+    return any(
+        key in extract.resolved_block and key not in main_block for key in ("transport", "ws_path")
+    )
 
 
 def _broker_from_block(

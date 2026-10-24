@@ -1038,6 +1038,61 @@ async def test_coordinator_inherits_transport_and_ws_path_from_package(
     assert broker.ws_path == "/package/mqtt"
 
 
+async def test_stale_extract_defers_inherited_transport_until_reload(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    initial_yaml = "mqtt:\n  broker: initial.example\n"
+    alpha_path = tmp_path / "alpha.yaml"
+    alpha_path.write_text(initial_yaml)
+    device = Device(
+        name="alpha",
+        friendly_name="alpha",
+        configuration="alpha.yaml",
+        uses_mqtt=True,
+        mqtt_extract=build_test_extract(
+            alpha_path,
+            initial_yaml,
+            {
+                "mqtt": {
+                    "broker": "package.example",
+                    "transport": "wss",
+                    "ws_path": "/package/mqtt",
+                }
+            },
+        ),
+    )
+    current_yaml = "mqtt:\n  broker: main.example\n  port: 1883\n"
+    alpha_path.write_text(current_yaml)
+    reloads: list[str] = []
+    coord = make_mqtt_coordinator(tmp_path, [device], reload_requests=reloads)
+
+    await coord.reconcile()
+
+    assert coord.active_brokers == 0
+    assert stub_monitor.instances == []
+    assert reloads == ["alpha.yaml"]
+
+    device.mqtt_extract = build_test_extract(
+        alpha_path,
+        current_yaml,
+        {
+            "mqtt": {
+                "broker": "package.example",
+                "transport": "wss",
+                "ws_path": "/package/mqtt",
+            }
+        },
+    )
+    await coord.reconcile()
+
+    assert coord.active_brokers == 1
+    broker = stub_monitor.instances[0].broker
+    assert broker.host == "main.example"
+    assert broker.transport == "wss"
+    assert broker.ws_path == "/package/mqtt"
+
+
 async def test_coordinator_unresolved_transport_from_substitution() -> None:
     assert (
         _broker_from_mqtt_dict({"broker": "10.0.0.5", "transport": "${mqtt_transport}"}, {}, {})
