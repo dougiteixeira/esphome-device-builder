@@ -41,6 +41,10 @@ from ..helpers.yaml import load_yaml_fast_then_esphome
 from ..models import Device
 from ..models.devices import DeviceMqttExtract, MqttFreshnessStamp
 from ._device_mqtt_monitor import (
+    _DEFAULT_PORT,
+    _DEFAULT_TRANSPORT,
+    _SUPPORTED_TRANSPORTS,
+    _WEBSOCKET_TRANSPORTS,
     BrokerKey,
     DeviceMqttMonitor,
     IPCallback,
@@ -50,10 +54,6 @@ from ._device_mqtt_monitor import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-_DEFAULT_PORT = 1883
-_DEFAULT_TRANSPORT = "tcp"
-_DEFAULT_WS_PATH = "/mqtt"
 
 # ``mqtt:`` fields read into an MqttBrokerConfig, each resolved through
 # the same !secret + substitution pipeline.
@@ -532,19 +532,16 @@ def _broker_from_block(
     transport_raw = mqtt.get("transport")
     if (isinstance(transport_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(transport_raw)) or (
         transport := (transport_raw or _DEFAULT_TRANSPORT).lower()
-    ) not in ("tcp", "wss", "ws"):
+    ) not in _SUPPORTED_TRANSPORTS:
         return None
 
     ws_path_raw = mqtt.get("ws_path")
-    if transport in ("wss", "ws"):
-        if (
-            isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw)
-        ) or ws_path_raw is None:
-            ws_path = _DEFAULT_WS_PATH
-        else:
-            ws_path = ws_path_raw
-    else:
+    if transport not in _WEBSOCKET_TRANSPORTS or (
+        isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw)
+    ):
         ws_path = None
+    else:
+        ws_path = ws_path_raw
 
     return MqttBrokerConfig(
         host=str(host),

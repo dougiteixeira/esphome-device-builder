@@ -50,6 +50,9 @@ _RECONNECT_DELAY = 5.0  # delay before reconnecting after broker errors
 _CONNECT_TIMEOUT = 10.0  # seconds to wait for CONNACK before giving up
 _DEFAULT_PORT = 1883
 _DEFAULT_TRANSPORT = "tcp"
+_DEFAULT_WS_PATH = "/mqtt"
+_SUPPORTED_TRANSPORTS = frozenset({"tcp", "ws", "wss"})
+_WEBSOCKET_TRANSPORTS = frozenset({"ws", "wss"})
 # One taxonomy for "quiet reconnect": ``_run``'s except clause and the
 # session TaskGroup unwrap must agree, or a concurrent group stops
 # collapsing and degrades to the loud unexpected path.
@@ -155,6 +158,10 @@ class MqttBrokerConfig:
     skip_cert_cn_check: bool = False
     transport: str = _DEFAULT_TRANSPORT
     ws_path: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.transport in _WEBSOCKET_TRANSPORTS and self.ws_path is None:
+            object.__setattr__(self, "ws_path", _DEFAULT_WS_PATH)
 
     @property
     def key(self) -> BrokerKey:
@@ -424,7 +431,7 @@ class DeviceMqttMonitor:
             loop.call_soon_threadsafe(signals.messages.put_nowait, msg)
 
         # Read per session, not at import: tests swap the module in.
-        websocket = self._broker.transport in ("ws", "wss")
+        websocket = self._broker.transport in _WEBSOCKET_TRANSPORTS
         paho_transport = "websockets" if websocket else _DEFAULT_TRANSPORT
 
         api_version = getattr(paho_mqtt, "CallbackAPIVersion", None)
@@ -441,8 +448,7 @@ class DeviceMqttMonitor:
         )
 
         if websocket:
-            ws_path = self._broker.ws_path
-            client.ws_set_options(path=ws_path if ws_path is not None else "/mqtt")
+            client.ws_set_options(path=self._broker.ws_path)
 
         client.on_connect = on_connect
         client.on_subscribe = on_subscribe
