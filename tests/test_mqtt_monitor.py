@@ -194,6 +194,9 @@ def test_parse_mqtt_block_unresolved_port_substitution_falls_back_to_default() -
         ),
         pytest.param("transport: WSS", "wss", "/mqtt", id="uppercase-wss"),
         pytest.param("transport: WSs", "wss", "/mqtt", id="mixed-case-wss"),
+        # A leftover path on a plain TCP broker must not split its session.
+        pytest.param("ws_path: /leftover", "tcp", "/mqtt", id="tcp-ignores-ws-path"),
+        pytest.param("ws_path: ${unset}", "tcp", "/mqtt", id="tcp-ignores-unresolved-ws-path"),
     ],
 )
 def test_parse_mqtt_block_reads_transport(block: str, transport: str, ws_path: str) -> None:

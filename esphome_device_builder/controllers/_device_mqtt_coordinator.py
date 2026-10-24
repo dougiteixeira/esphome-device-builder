@@ -45,6 +45,7 @@ from ._device_mqtt_monitor import (
     _DEFAULT_TRANSPORT,
     _DEFAULT_WS_PATH,
     _SUPPORTED_TRANSPORTS,
+    _WEBSOCKET_TRANSPORTS,
     BrokerKey,
     DeviceMqttMonitor,
     IPCallback,
@@ -73,8 +74,10 @@ _CLIENT_CERT_FIELDS = ("client_certificate", "client_certificate_key")
 # Every ``mqtt:`` key the broker parse reads; a package may supply any of
 # them under a main-file ``broker:``.
 _PARSED_FIELDS = (*_BROKER_FIELDS, "skip_cert_cn_check", *_CLIENT_CERT_FIELDS)
-# Fields an unresolved ``${var}`` token would turn into a bogus endpoint.
-_ENDPOINT_FIELDS = ("broker", "transport", "ws_path")
+# Fields an unresolved ``${var}`` token would turn into a bogus endpoint;
+# the path only shapes a WebSocket endpoint.
+_ENDPOINT_FIELDS = ("broker", "transport")
+_WS_ENDPOINT_FIELDS = (*_ENDPOINT_FIELDS, "ws_path")
 
 _PEM_CERT_MARKER = "-----BEGIN CERTIFICATE-----"
 
@@ -537,10 +540,12 @@ def _broker_from_block(
         k: _resolve_substitutions(_resolve(raw_mqtt.get(k), secrets_map), subs)
         for k in _BROKER_FIELDS
     }
+    transport = str(mqtt.get("transport") or _DEFAULT_TRANSPORT).lower()
+    websocket = transport in _WEBSOCKET_TRANSPORTS
     # An unresolved ``${var}`` / ``$var`` token, or a declared field that
     # resolved to nothing (a missing secret), would otherwise become a
     # bogus or default endpoint and loop the monitor on connect failure.
-    for field in _ENDPOINT_FIELDS:
+    for field in _WS_ENDPOINT_FIELDS if websocket else _ENDPOINT_FIELDS:
         value = mqtt.get(field)
         if (field in raw_mqtt and not value) or (
             isinstance(value, str) and _UNRESOLVED_SUBSTITUTION_RE.search(value)
@@ -572,7 +577,6 @@ def _broker_from_block(
         port = _DEFAULT_PORT
     username = mqtt.get("username") or None
     password = mqtt.get("password") or None
-    transport = str(mqtt.get("transport") or _DEFAULT_TRANSPORT).lower()
     if transport not in _SUPPORTED_TRANSPORTS:
         return None
     return MqttBrokerConfig(
@@ -583,7 +587,7 @@ def _broker_from_block(
         certificate_authority=certificate_authority,
         skip_cert_cn_check=skip_cert_cn_check,
         transport=transport,
-        ws_path=mqtt.get("ws_path") or _DEFAULT_WS_PATH,
+        ws_path=(mqtt.get("ws_path") or _DEFAULT_WS_PATH) if websocket else _DEFAULT_WS_PATH,
     )
 
 
