@@ -531,8 +531,8 @@ def _broker_from_block(
 
     transport_raw = mqtt.get("transport")
     if (isinstance(transport_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(transport_raw)) or (
-        transport := transport_raw or _DEFAULT_TRANSPORT
-    ).lower() not in ("tcp", "wss", "ws"):
+        transport := (transport_raw or _DEFAULT_TRANSPORT).lower()
+    ) not in ("tcp", "wss", "ws"):
         return None
 
     ws_path_raw = mqtt.get("ws_path")
