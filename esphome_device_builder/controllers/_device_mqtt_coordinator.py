@@ -43,8 +43,8 @@ from ..models.devices import DeviceMqttExtract, MqttFreshnessStamp
 from ._device_mqtt_monitor import (
     _DEFAULT_PORT,
     _DEFAULT_TRANSPORT,
+    _DEFAULT_WS_PATH,
     _SUPPORTED_TRANSPORTS,
-    _WEBSOCKET_TRANSPORTS,
     BrokerKey,
     DeviceMqttMonitor,
     IPCallback,
@@ -70,6 +70,11 @@ _BROKER_FIELDS = (
 # PEM (``load_cert_chain`` wants files), so these blocks are skipped
 # with a warning instead of looping unreachable.
 _CLIENT_CERT_FIELDS = ("client_certificate", "client_certificate_key")
+# Every ``mqtt:`` key the broker parse reads; a package may supply any of
+# them under a main-file ``broker:``.
+_PARSED_FIELDS = (*_BROKER_FIELDS, "skip_cert_cn_check", *_CLIENT_CERT_FIELDS)
+# Fields an unresolved ``${var}`` token would turn into a bogus endpoint.
+_ENDPOINT_FIELDS = ("broker", "transport", "ws_path")
 
 _PEM_CERT_MARKER = "-----BEGIN CERTIFICATE-----"
 
@@ -205,10 +210,8 @@ class DeviceMqttCoordinator:
         """Stop monitors for logins no longer referenced; False when ``stop()`` intervened."""
         for key in set(self._monitors) - wanted:
             _LOGGER.info(
-                "Stopping MQTT monitor for %s://%s:%s user %r",
-                key.transport,
-                key.host,
-                key.port,
+                "Stopping MQTT monitor for %s user %r",
+                key.url,
                 key.username,
             )
             # Deregister only after a completed teardown so a cancel
@@ -306,27 +309,18 @@ class DeviceMqttCoordinator:
                 # present-but-unresolvable YAMLs, not deleted ones.
                 _LOGGER.debug(_UNREADABLE_DEBUG, device.configuration)
                 continue
-            if (extract := device.mqtt_extract) is not None and _extract_fresh(extract, yaml_stat):
-                mqtt_block = _merge_package_mqtt_defaults(
-                    extract.main_block, extract.resolved_block
-                )
-                broker = _broker_from_mqtt_dict(mqtt_block, secrets_map, extract.main_substitutions)
-            else:
-                # Scan raced an edit (or the device predates the scanner
-                # carrying extractions) — fall back to reading the file;
-                # the handle stat keys the extract-seed comparison.
-                try:
-                    yaml_stat, yaml_content = read_text_with_stat(yaml_path)
-                except OSError:
-                    _LOGGER.debug(_UNREADABLE_DEBUG, device.configuration)
-                    continue
-                main_block, main_substitutions = extract_mqtt_block(yaml_content)
-                if extract is not None and _stale_extract_has_inherited_connection_options(
-                    extract, main_block
-                ):
-                    needs_reload.append(device.configuration)
-                    continue
-                broker = _broker_from_mqtt_dict(main_block, secrets_map, main_substitutions)
+            extract = device.mqtt_extract
+            try:
+                source = _mqtt_block_for(extract, yaml_path, yaml_stat, secrets_key)
+            except OSError:
+                _LOGGER.debug(_UNREADABLE_DEBUG, device.configuration)
+                continue
+            if source is None:
+                # Skip silently — no warn-gate consumption.
+                needs_reload.append(device.configuration)
+                continue
+            yaml_stat, mqtt_block, main_substitutions = source
+            broker = _broker_from_mqtt_dict(mqtt_block, secrets_map, main_substitutions)
             if broker is None:
                 cache_key = MqttFreshnessStamp(
                     yaml_stat.st_mtime_ns, yaml_stat.st_size, *secrets_key
@@ -421,12 +415,10 @@ class DeviceMqttCoordinator:
         self._warn_once(
             self._conflict_logged,
             broker.key,
-            "Multiple devices reference broker %s://%s:%s as user %r with different passwords — "
+            "Multiple devices reference broker %s as user %r with different passwords — "
             "using the password from the first device",
-            "Broker %s://%s:%s user %r still referenced with different passwords — using the first",
-            broker.transport,
-            broker.host,
-            broker.port,
+            "Broker %s user %r still referenced with different passwords — using the first",
+            broker.url,
             broker.username,
         )
 
@@ -492,26 +484,42 @@ def _broker_from_mqtt_dict(
     return _broker_from_block(mqtt, secrets_map, subs)
 
 
-def _merge_package_mqtt_defaults(
-    main_block: dict[str, Any] | None,
-    resolved_block: dict[str, Any] | None,
+def _mqtt_block_for(
+    extract: DeviceMqttExtract | None,
+    yaml_path: Path,
+    yaml_stat: os.stat_result,
+    secrets_key: tuple[int, int],
+) -> tuple[os.stat_result, dict[str, Any] | None, dict[str, str]] | None:
+    """Stat, ``mqtt:`` block and substitutions to parse; None when a reload must run first."""
+    if extract is not None and _extract_fresh(extract, yaml_stat):
+        block = extract.main_block
+        if (merged := _inherit_seed_fields(block, extract.resolved_block)) is not None:
+            # Seed values bake in secrets, so they are only as fresh as
+            # the secrets file they were read against.
+            if (extract.secrets_mtime_ns, extract.secrets_size) != secrets_key:
+                return None
+            block = merged
+        return yaml_stat, block, extract.main_substitutions
+    # Scan raced an edit (or the device predates the scanner carrying
+    # extractions): fall back to reading the file; the handle stat keys
+    # the extract-seed comparison. A seed that would add fields is as
+    # stale as the extract and needs the reload too.
+    yaml_stat, yaml_content = read_text_with_stat(yaml_path)
+    block, subs = extract_mqtt_block(yaml_content)
+    if extract is not None and _inherit_seed_fields(block, extract.resolved_block) is not None:
+        return None
+    return yaml_stat, block, subs
+
+
+def _inherit_seed_fields(
+    main_block: dict[str, Any] | None, resolved_block: dict[str, Any] | None
 ) -> dict[str, Any] | None:
-    """Fill absent main-block fields from a fresh package-resolved MQTT block."""
+    """*main_block* over the seed when the seed carries a parsed field it lacks, else None."""
     if main_block is None or resolved_block is None:
-        return main_block
-    return resolved_block | main_block
-
-
-def _stale_extract_has_inherited_connection_options(
-    extract: DeviceMqttExtract,
-    main_block: dict[str, Any] | None,
-) -> bool:
-    """Whether a stale package seed may supply transport or WebSocket path."""
-    if main_block is None or extract.resolved_block is None:
-        return False
-    return any(
-        key in extract.resolved_block and key not in main_block for key in ("transport", "ws_path")
-    )
+        return None
+    if any(key in resolved_block and key not in main_block for key in _PARSED_FIELDS):
+        return resolved_block | main_block
+    return None
 
 
 def _broker_from_block(
@@ -527,10 +535,17 @@ def _broker_from_block(
         k: _resolve_substitutions(_resolve(raw_mqtt.get(k), secrets_map), subs)
         for k in _BROKER_FIELDS
     }
+    # An unresolved ``${var}`` / ``$var`` token, or a declared field that
+    # resolved to nothing (a missing secret), would otherwise become a
+    # bogus or default endpoint and loop the monitor on connect failure.
+    for field in _ENDPOINT_FIELDS:
+        value = mqtt.get(field)
+        if (field in raw_mqtt and not value) or (
+            isinstance(value, str) and _UNRESOLVED_SUBSTITUTION_RE.search(value)
+        ):
+            return None
     host = mqtt.get("broker")
-    # An unresolved ``${var}`` / ``$var`` token would otherwise become a
-    # bogus host and loop the monitor on DNS failure.
-    if not host or (isinstance(host, str) and _UNRESOLVED_SUBSTITUTION_RE.search(host)):
+    if not host:
         return None
     certificate_authority = mqtt.get("certificate_authority") or None
     # esphome's ``certificate_authority`` is PEM content; a file path or
@@ -555,18 +570,9 @@ def _broker_from_block(
         port = _DEFAULT_PORT
     username = mqtt.get("username") or None
     password = mqtt.get("password") or None
-
-    transport_raw = mqtt.get("transport")
-    if (isinstance(transport_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(transport_raw)) or (
-        transport := (transport_raw or _DEFAULT_TRANSPORT).lower()
-    ) not in _SUPPORTED_TRANSPORTS:
+    transport = str(mqtt.get("transport") or _DEFAULT_TRANSPORT).lower()
+    if transport not in _SUPPORTED_TRANSPORTS:
         return None
-
-    ws_path_raw = mqtt.get("ws_path")
-    if isinstance(ws_path_raw, str) and _UNRESOLVED_SUBSTITUTION_RE.search(ws_path_raw):
-        return None
-    ws_path = ws_path_raw if transport in _WEBSOCKET_TRANSPORTS else None
-
     return MqttBrokerConfig(
         host=str(host),
         port=port,
@@ -575,7 +581,7 @@ def _broker_from_block(
         certificate_authority=certificate_authority,
         skip_cert_cn_check=skip_cert_cn_check,
         transport=transport,
-        ws_path=ws_path,
+        ws_path=mqtt.get("ws_path") or _DEFAULT_WS_PATH,
     )
 
 

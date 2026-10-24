@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import enum
+import importlib
 import json
 import ssl
 import textwrap
@@ -179,77 +180,40 @@ def test_parse_mqtt_block_unresolved_port_substitution_falls_back_to_default() -
     assert config.port == 1883
 
 
-def test_parse_mqtt_block_reads_tcp_transport_without_ws_path() -> None:
-    yaml = "mqtt:\n  broker: broker.example\n  port: 80\n  transport: tcp\n"
-
-    config = parse_mqtt_block(yaml)
-
-    assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "tcp"
-    assert config.ws_path is None
-
-
-def test_parse_mqtt_block_reads_ws_transport() -> None:
-    yaml = "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n"
-
-    config = parse_mqtt_block(yaml)
-
-    assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "ws"
-    assert config.ws_path == "/mqtt"
-
-
-def test_parse_mqtt_block_reads_wss_transport() -> None:
-    yaml = "mqtt:\n  broker: broker.example\n  port: 443\n  transport: wss\n"
-
-    config = parse_mqtt_block(yaml)
-
-    assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "wss"
-    assert config.ws_path == "/mqtt"
-
-
 @pytest.mark.parametrize(
-    ("transport", "expected_transport"),
+    ("block", "transport", "ws_path"),
     [
-        pytest.param("WSS", "wss", id="uppercase-wss"),
-        pytest.param("ws", "ws", id="lower-ws"),
-        pytest.param("WSs", "wss", id="mixed-case-wss"),
+        pytest.param("port: 80\n  transport: tcp", "tcp", "/mqtt", id="tcp"),
+        pytest.param("port: 80\n  transport: ws", "ws", "/mqtt", id="ws-default-path"),
+        pytest.param("port: 443\n  transport: wss", "wss", "/mqtt", id="wss-default-path"),
+        pytest.param(
+            "transport: ws\n  ws_path: /esphome/mqtt", "ws", "/esphome/mqtt", id="ws-custom-path"
+        ),
+        pytest.param(
+            "transport: wss\n  ws_path: /esphome/mqtt", "wss", "/esphome/mqtt", id="wss-custom-path"
+        ),
+        pytest.param("transport: WSS", "wss", "/mqtt", id="uppercase-wss"),
+        pytest.param("transport: WSs", "wss", "/mqtt", id="mixed-case-wss"),
     ],
 )
-def test_parse_mqtt_block_normalizes_transport_case(
-    transport: str, expected_transport: str
-) -> None:
-    yaml = f"mqtt:\n  broker: broker.example\n  transport: {transport}\n"
-
-    config = parse_mqtt_block(yaml)
+def test_parse_mqtt_block_reads_transport(block: str, transport: str, ws_path: str) -> None:
+    config = parse_mqtt_block(f"mqtt:\n  broker: broker.example\n  {block}\n")
 
     assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == expected_transport
+    assert config.transport == transport
+    assert config.ws_path == ws_path
 
 
-def test_parse_mqtt_block_reads_custom_ws_path() -> None:
-    yaml = (
-        "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n  ws_path: /esphome/mqtt\n"
-    )
-
-    config = parse_mqtt_block(yaml)
-
-    assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "ws"
-    assert config.ws_path == "/esphome/mqtt"
-
-
-def test_parse_mqtt_block_reads_custom_wss_path() -> None:
-    yaml = (
-        "mqtt:\n  broker: broker.example\n  port: 443\n  transport: wss\n  ws_path: /esphome/mqtt\n"
-    )
-
-    config = parse_mqtt_block(yaml)
-
-    assert isinstance(config, MqttBrokerConfig)
-    assert config.transport == "wss"
-    assert config.ws_path == "/esphome/mqtt"
+def test_transport_vocabulary_matches_esphome() -> None:
+    """The transport spellings and defaults are esphome's, not a local copy that can drift."""
+    mqtt = importlib.import_module("esphome.components.mqtt")
+    if not hasattr(mqtt, "MQTT_TRANSPORT_OPTIONS"):
+        pytest.skip("installed esphome predates mqtt transport (esphome/esphome#16056)")
+    assert set(mqtt.MQTT_TRANSPORT_OPTIONS) == monitor_module._SUPPORTED_TRANSPORTS
+    assert {mqtt.MQTT_TRANSPORT_WS, mqtt.MQTT_TRANSPORT_WSS} == monitor_module._WEBSOCKET_TRANSPORTS
+    assert monitor_module._TLS_TRANSPORT == mqtt.MQTT_TRANSPORT_WSS
+    assert monitor_module._DEFAULT_TRANSPORT == mqtt.MQTT_TRANSPORT_TCP
+    assert monitor_module._DEFAULT_WS_PATH == mqtt.DEFAULT_WS_PATH
 
 
 # A real (throwaway) self-signed certificate so ``load_verify_locations``
@@ -1043,6 +1007,9 @@ async def test_stale_extract_defers_inherited_transport_until_reload(
     stub_monitor: type[RecordingMonitor],
 ) -> None:
     initial_yaml = "mqtt:\n  broker: initial.example\n"
+    package = {
+        "mqtt": {"broker": "package.example", "transport": "wss", "ws_path": "/package/mqtt"}
+    }
     alpha_path = tmp_path / "alpha.yaml"
     alpha_path.write_text(initial_yaml)
     device = Device(
@@ -1050,17 +1017,7 @@ async def test_stale_extract_defers_inherited_transport_until_reload(
         friendly_name="alpha",
         configuration="alpha.yaml",
         uses_mqtt=True,
-        mqtt_extract=build_test_extract(
-            alpha_path,
-            initial_yaml,
-            {
-                "mqtt": {
-                    "broker": "package.example",
-                    "transport": "wss",
-                    "ws_path": "/package/mqtt",
-                }
-            },
-        ),
+        mqtt_extract=build_test_extract(alpha_path, initial_yaml, package),
     )
     current_yaml = "mqtt:\n  broker: main.example\n  port: 1883\n"
     alpha_path.write_text(current_yaml)
@@ -1073,17 +1030,7 @@ async def test_stale_extract_defers_inherited_transport_until_reload(
     assert stub_monitor.instances == []
     assert reloads == ["alpha.yaml"]
 
-    device.mqtt_extract = build_test_extract(
-        alpha_path,
-        current_yaml,
-        {
-            "mqtt": {
-                "broker": "package.example",
-                "transport": "wss",
-                "ws_path": "/package/mqtt",
-            }
-        },
-    )
+    device.mqtt_extract = build_test_extract(alpha_path, current_yaml, package)
     await coord.reconcile()
 
     assert coord.active_brokers == 1
@@ -1093,30 +1040,59 @@ async def test_stale_extract_defers_inherited_transport_until_reload(
     assert broker.ws_path == "/package/mqtt"
 
 
-async def test_coordinator_unresolved_transport_from_substitution() -> None:
-    assert (
-        _broker_from_mqtt_dict({"broker": "10.0.0.5", "transport": "${mqtt_transport}"}, {}, {})
-        is None
+async def test_coordinator_inherited_seed_waits_for_reload_after_secrets_change(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    """Seed values bake in secrets; a secrets edit since the scan defers the merge to a reload."""
+    secrets = tmp_path / "secrets.yaml"
+    secrets.write_text("mqtt_password: old\n")
+    device = write_mqtt_device(tmp_path, "alpha", "mqtt:\n  broker: main.example\n")
+    alpha_path = tmp_path / "alpha.yaml"
+    package = {"mqtt": {"broker": "main.example", "username": "fleet", "password": "old"}}
+    device.mqtt_extract = build_test_extract(alpha_path, alpha_path.read_text(), package)
+    secrets.write_text("mqtt_password: rotated\n")
+    reloads: list[str] = []
+    coord = make_mqtt_coordinator(tmp_path, [device], reload_requests=reloads)
+
+    await coord.reconcile()
+
+    assert reloads == ["alpha.yaml"]
+    assert coord.active_brokers == 0
+
+    device.mqtt_extract = build_test_extract(
+        alpha_path,
+        alpha_path.read_text(),
+        package | {"mqtt": {**package["mqtt"], "password": "rotated"}},
     )
+    await coord.reconcile()
+
+    assert coord.active_brokers == 1
+    broker = stub_monitor.instances[0].broker
+    assert (broker.username, broker.password) == ("fleet", "rotated")
 
 
-async def test_coordinator_default_transport() -> None:
-    yaml = "mqtt:\n  broker: 10.0.0.5\n"
-    config = parse_mqtt_block(yaml)
+def test_coordinator_default_transport() -> None:
+    config = parse_mqtt_block("mqtt:\n  broker: 10.0.0.5\n")
     assert config is not None
     assert config.transport == "tcp"
 
 
-async def test_coordinator_invalid_transport() -> None:
-    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: tls"
-    config = parse_mqtt_block(yaml)
-    assert config is None
-
-
-async def test_coordinator_unresolved_ws_path_from_substitution() -> None:
-    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ws\n  ws_path: ${mqtt_ws_path}\n"
-    config = parse_mqtt_block(yaml)
-    assert config is None
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"transport": "tls"}, id="unsupported-transport"),
+        pytest.param({"transport": "${mqtt_transport}"}, id="unresolved-transport"),
+        pytest.param({"transport": "ws", "ws_path": "${mqtt_ws_path}"}, id="unresolved-ws-path"),
+        pytest.param({"transport": None}, id="declared-transport-resolves-to-nothing"),
+        pytest.param(
+            {"transport": "wss", "ws_path": None}, id="declared-ws-path-resolves-to-nothing"
+        ),
+    ],
+)
+def test_coordinator_refuses_unusable_transport(block: dict[str, Any]) -> None:
+    """A field that would default to plaintext TCP or the wrong path fails the parse instead."""
+    assert _broker_from_mqtt_dict({"broker": "10.0.0.5", **block}, {}, {}) is None
 
 
 async def test_coordinator_skips_unresolved_substitution(
@@ -2396,166 +2372,49 @@ async def test_connect_wraps_ca_broker_in_tls_context(monkeypatch: pytest.Monkey
     assert len(context.get_ca_certs()) == 1
 
 
-async def test_connect_ws_uses_websocket_transport(
+@pytest.mark.parametrize(
+    ("broker", "paho_transport", "ws_path", "tls"),
+    [
+        pytest.param({"port": 1883, "transport": "tcp"}, "tcp", None, False, id="tcp"),
+        pytest.param({"port": 80, "transport": "ws"}, "websockets", "/mqtt", False, id="ws"),
+        pytest.param(
+            {"port": 80, "transport": "ws", "ws_path": "/esphome/mqtt"},
+            "websockets",
+            "/esphome/mqtt",
+            False,
+            id="ws-custom-path",
+        ),
+        pytest.param({"port": 443, "transport": "wss"}, "websockets", "/mqtt", True, id="wss"),
+        pytest.param(
+            {"port": 443, "transport": "wss", "ws_path": "/custom/mqtt"},
+            "websockets",
+            "/custom/mqtt",
+            True,
+            id="wss-custom-path",
+        ),
+    ],
+)
+async def test_connect_applies_transport(
     monkeypatch: pytest.MonkeyPatch,
+    broker: dict[str, Any],
+    paho_transport: str,
+    ws_path: str | None,
+    tls: bool,
 ) -> None:
     monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=80,
-            transport="ws",
-        ),
+        broker=MqttBrokerConfig(host="broker.local", **broker),
         on_state_change=lambda *_: None,
         on_ip_change=lambda *_: None,
     )
 
     calls = await _drive_one_session(monitor, monkeypatch)
 
-    assert (
-        "init",
-        ("test-id", True, "websockets"),
-    ) in calls
-
-
-async def test_connect_ws_sets_default_websocket_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=80,
-            transport="ws",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(monitor, monkeypatch)
-
-    assert ("ws_set_options", ("/mqtt",)) in calls
-
-
-async def test_connect_ws_sets_custom_websocket_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=80,
-            transport="ws",
-            ws_path="/esphome/mqtt",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(
-        monitor,
-        monkeypatch,
-    )
-
-    assert (
-        "ws_set_options",
-        ("/esphome/mqtt",),
-    ) in calls
-
-
-async def test_connect_wss_sets_default_websocket_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=443,
-            transport="wss",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(monitor, monkeypatch)
-
-    assert ("ws_set_options", ("/mqtt",)) in calls
-
-
-async def test_connect_wss_sets_custom_websocket_path(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=443,
-            transport="wss",
-            ws_path="/custom/mqtt",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(
-        monitor,
-        monkeypatch,
-    )
-
-    assert (
-        "ws_set_options",
-        ("/custom/mqtt",),
-    ) in calls
-
-    operation_names = [operation for operation, _arguments in calls]
-
-    assert "tls_set_context" in operation_names
-
-
-async def test_connect_tcp_does_not_set_websocket_options(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=1883,
-            transport="tcp",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(
-        monitor,
-        monkeypatch,
-    )
-
-    assert (
-        "init",
-        ("test-id", True, "tcp"),
-    ) in calls
-
-    assert not any(operation == "ws_set_options" for operation, _arguments in calls)
-
-
-async def test_connect_ws_does_not_enable_tls(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monitor = DeviceMqttMonitor(
-        broker=MqttBrokerConfig(
-            host="broker.local",
-            port=80,
-            transport="ws",
-        ),
-        on_state_change=lambda *_: None,
-        on_ip_change=lambda *_: None,
-    )
-
-    calls = await _drive_one_session(
-        monitor,
-        monkeypatch,
-    )
-
-    operation_names = [operation for operation, _arguments in calls]
-
-    assert "ws_set_options" in operation_names
-    assert "tls_set_context" not in operation_names
-    assert "tls_insecure_set" not in operation_names
+    op_names = [c[0] for c in calls]
+    assert ("init", ("test-id", True, paho_transport)) in calls
+    ws_calls = [args for op, args in calls if op == "ws_set_options"]
+    assert ws_calls == ([(ws_path,)] if ws_path else [])
+    assert ("tls_set_context" in op_names) is tls
+    assert "tls_insecure_set" not in op_names
 
 
 async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2692,10 +2551,8 @@ async def test_reconnect_subscribe_failure_tears_the_session_down(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(
-            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
-        ) -> None:
-            super().__init__(client_id, clean_session, transport)
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
             self.subscribe_calls = 0
             instances.append(self)
 
@@ -2736,10 +2593,8 @@ async def test_acl_denied_subscription_tears_the_session_down(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(
-            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
-        ) -> None:
-            super().__init__(client_id, clean_session, transport)
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
             instances.append(self)
 
         def publish(self, topic: str, payload: Any = None, retain: bool = False) -> _PublishInfo:
@@ -2796,10 +2651,8 @@ async def test_missing_suback_on_reconnect_fails_the_session(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(
-            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
-        ) -> None:
-            super().__init__(client_id, clean_session, transport)
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
             self.subscribe_calls = 0
             instances.append(self)
 
@@ -3011,10 +2864,8 @@ async def test_reconnect_refires_subscribe_via_on_connect(
     instances: list[Any] = []
 
     class _FakeClient(_FakePahoClient):
-        def __init__(
-            self, client_id: str = "", clean_session: bool = True, transport: str = "tcp"
-        ) -> None:
-            super().__init__(client_id, clean_session, transport)
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
             instances.append(self)
 
         def subscribe(self, topic: str) -> tuple[int, int]:
