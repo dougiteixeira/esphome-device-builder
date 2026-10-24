@@ -965,8 +965,10 @@ async def test_coordinator_resolves_ws_path_from_substitution(
 
 
 async def test_coordinator_unresolved_transport_from_substitution() -> None:
-    yaml = "mqtt:\n  broker: 10.0.0.5\n  transport: ${mqtt_transport}\n"
-    assert _broker_from_mqtt_dict(yaml, {}, {}) is None
+    assert (
+        _broker_from_mqtt_dict({"broker": "10.0.0.5", "transport": "${mqtt_transport}"}, {}, {})
+        is None
+    )
 
 
 async def test_coordinator_default_transport() -> None:
