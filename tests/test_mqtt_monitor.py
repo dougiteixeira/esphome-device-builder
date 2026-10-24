@@ -209,6 +209,27 @@ def test_parse_mqtt_block_reads_wss_transport() -> None:
     assert config.ws_path == "/mqtt"
 
 
+@pytest.mark.parametrize(
+    ("transport", "expected_transport"),
+    [
+        pytest.param("WSS", "wss", id="uppercase-wss"),
+        pytest.param("WS", "ws", id="uppercase-ws"),
+        pytest.param("WSs", "wss", id="mixed-case-wss"),
+        pytest.param("TCP", "tcp", id="uppercase-tcp"),
+        pytest.param("tcp", "tcp", id="mixed-case-tcp"),
+    ],
+)
+def test_parse_mqtt_block_normalizes_transport_case(
+    transport: str, expected_transport: str
+) -> None:
+    yaml = f"mqtt:\n  broker: broker.example\n  transport: {transport}\n"
+
+    config = parse_mqtt_block(yaml)
+
+    assert isinstance(config, MqttBrokerConfig)
+    assert config.transport == expected_transport
+
+
 def test_parse_mqtt_block_reads_custom_ws_path() -> None:
     yaml = (
         "mqtt:\n  broker: broker.example\n  port: 80\n  transport: ws\n  ws_path: /esphome/mqtt\n"
