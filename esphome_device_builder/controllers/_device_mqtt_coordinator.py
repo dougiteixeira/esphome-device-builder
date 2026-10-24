@@ -395,8 +395,8 @@ class DeviceMqttCoordinator:
             self._unresolved_logged,
             configuration,
             "Device %s declares mqtt: but broker could not be resolved "
-            "(missing secret, invalid config, or a certificate_authority "
-            "that is not valid inline PEM content)",
+            "(missing secret, invalid config, an unsupported transport or ws_path, "
+            "or a certificate_authority that is not valid inline PEM content)",
             "Device %s declares mqtt: but broker still could not be resolved",
             configuration,
         )
