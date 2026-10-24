@@ -2435,6 +2435,29 @@ async def test_connect_skip_cn_check_uses_tls_insecure(monkeypatch: pytest.Monke
     A direct ``check_hostname`` flip hits the ``ssl.match_hostname``
     removal on Python 3.12+.
     """
+
+
+async def test_connect_wss_without_ca_skip_cn_uses_default_tls_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monitor = DeviceMqttMonitor(
+        broker=MqttBrokerConfig(
+            host="broker.local",
+            port=443,
+            transport="wss",
+            skip_cert_cn_check=True,
+        ),
+        on_state_change=lambda *_: None,
+        on_ip_change=lambda *_: None,
+    )
+
+    calls = await _drive_one_session(monitor, monkeypatch)
+
+    (context,) = next(args for operation, args in calls if operation == "tls_set_context")
+    assert context.verify_mode is ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    assert ("tls_insecure_set", (True,)) in calls
+
     monitor = DeviceMqttMonitor(
         broker=MqttBrokerConfig(
             host="broker.local",

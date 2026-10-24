@@ -617,7 +617,7 @@ class DeviceMqttMonitor:
         Executor-only: the cert parse is CPU-bound OpenSSL work today,
         and becomes hidden disk I/O the day a CA loads from a file path.
         """
-        if not (self._broker.transport == "wss" or self._broker.certificate_authority is not None):
+        if not self._broker.certificate_authority and self._broker.transport != "wss":
             return
 
         if self._broker.certificate_authority:
