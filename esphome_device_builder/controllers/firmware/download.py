@@ -179,11 +179,11 @@ def collect_download_entries(
 
 
 def _add_md5_sidecars(build_dir: Path, downloads: list[dict], *, device_name: str) -> None:
-    """Generate downloadable MD5 sidecars and attach their hashes to firmware entries."""
+    """Generate MD5 sidecars and attach hashes to downloadable firmware artifacts."""
     sidecars = []
     for entry in downloads:
         filename = entry["file"]
-        if filename.endswith((".elf", ".md5")):
+        if filename.endswith(".md5"):
             continue
         artifact_path = resolve_under_root(build_dir / filename, build_dir)
         digest = _md5_file(artifact_path)

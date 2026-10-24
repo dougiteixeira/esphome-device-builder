@@ -459,7 +459,13 @@ async def test_get_binaries_appends_elf_entry_when_present(
         "firmware.factory.bin",
         "firmware.elf",
         "firmware.factory.bin.md5",
+        "firmware.elf.md5",
     ]
+    expected_md5 = hashlib.md5(b"x", usedforsecurity=False).hexdigest()
+    assert result[1]["md5"] == expected_md5
+    assert (build_dir / "firmware.elf.md5").read_text(encoding="ascii") == (
+        f"{expected_md5}  kitchen-firmware.elf\n"
+    )
 
 
 async def test_get_binaries_does_not_duplicate_elf_listed_upstream(
@@ -480,7 +486,10 @@ async def test_get_binaries_does_not_duplicate_elf_listed_upstream(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [elf]
+    assert result[0]["file"] == "firmware.elf"
+    assert result[0]["md5"] == hashlib.md5(b"x", usedforsecurity=False).hexdigest()
+    assert result[1]["file"] == "firmware.elf.md5"
+    assert result[1]["type"] == "md5"
     assert sum(entry["file"] == "firmware.elf" for entry in result) == 1
 
 
