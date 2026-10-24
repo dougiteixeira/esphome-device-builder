@@ -437,6 +437,33 @@ async def test_get_binaries_filters_to_files_present_on_disk(
     )
 
 
+async def test_get_binaries_does_not_generate_checksum_for_md5_entry(
+    tmp_path: Path, monkeypatch: Any, firmware_controller_factory: FirmwareControllerFactory
+) -> None:
+    firmware = {"title": "Firmware", "file": "firmware.bin"}
+    existing_md5 = {"title": "Existing checksum", "file": "provided.md5", "type": "md5"}
+    _stub_download_types(monkeypatch, [firmware, existing_md5])
+
+    build_dir = _make_build(tmp_path, "firmware.bin", "provided.md5")
+    write_storage_json(
+        tmp_path,
+        "kitchen.yaml",
+        firmware_bin_path=build_dir / "firmware.bin",
+        overrides={"esp_platform": "esp8266"},
+    )
+    controller = firmware_controller_factory()
+
+    result = await controller.get_binaries(configuration="kitchen.yaml")
+
+    assert [entry["file"] for entry in result] == [
+        "firmware.bin",
+        "provided.md5",
+        "firmware.bin.md5",
+    ]
+    assert result[1] == existing_md5
+    assert not (build_dir / "provided.md5.md5").exists()
+
+
 async def test_get_binaries_appends_elf_entry_when_present(
     tmp_path: Path, monkeypatch: Any, firmware_controller_factory: FirmwareControllerFactory
 ) -> None:
@@ -459,19 +486,17 @@ async def test_get_binaries_appends_elf_entry_when_present(
         "firmware.factory.bin",
         "firmware.elf",
         "firmware.factory.bin.md5",
-        "firmware.elf.md5",
     ]
     expected_md5 = hashlib.md5(b"x", usedforsecurity=False).hexdigest()
-    assert result[1]["md5"] == expected_md5
-    assert (build_dir / "firmware.elf.md5").read_text(encoding="ascii") == (
-        f"{expected_md5}  kitchen-firmware.elf\n"
-    )
+    assert result[0]["md5"] == expected_md5
+    assert "md5" not in result[1]
+    assert not (build_dir / "firmware.elf.md5").exists()
 
 
-async def test_get_binaries_does_not_duplicate_elf_listed_upstream(
+async def test_get_binaries_does_not_generate_checksum_for_elf_entry(
     tmp_path: Path, monkeypatch: Any, firmware_controller_factory: FirmwareControllerFactory
 ) -> None:
-    """If a platform's download types ever list firmware.elf, it appears once."""
+    """An upstream-listed ELF remains downloadable without an MD5 field or sidecar."""
     elf = {"title": "Upstream ELF", "file": "firmware.elf", "type": "elf"}
     _stub_download_types(monkeypatch, [elf])
 
@@ -487,10 +512,10 @@ async def test_get_binaries_does_not_duplicate_elf_listed_upstream(
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
     assert result[0]["file"] == "firmware.elf"
-    assert result[0]["md5"] == hashlib.md5(b"x", usedforsecurity=False).hexdigest()
-    assert result[1]["file"] == "firmware.elf.md5"
-    assert result[1]["type"] == "md5"
     assert sum(entry["file"] == "firmware.elf" for entry in result) == 1
+    assert "md5" not in result[0]
+    assert not any(entry["file"] == "firmware.elf.md5" for entry in result)
+    assert not (build_dir / "firmware.elf.md5").exists()
 
 
 # The entry ``get_binaries`` appends when the MCUboot update image is on disk.

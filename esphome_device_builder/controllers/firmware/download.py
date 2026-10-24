@@ -183,7 +183,7 @@ def _add_md5_sidecars(build_dir: Path, downloads: list[dict], *, device_name: st
     sidecars = []
     for entry in downloads:
         filename = entry["file"]
-        if filename.endswith(".md5"):
+        if filename.endswith((".md5", ".elf")):
             continue
         artifact_path = resolve_under_root(build_dir / filename, build_dir)
         digest = _md5_file(artifact_path)
