@@ -1238,6 +1238,7 @@ def test_broker_from_mqtt_dict_handles_invalid_port() -> None:
 
 def test_broker_from_mqtt_dict_returns_none_when_broker_missing() -> None:
     assert _broker_from_mqtt_dict({"username": "u"}, {}, {}) is None
+    assert _broker_from_mqtt_dict({"broker": ""}, {}, {}) is None
 
 
 def test_broker_from_mqtt_dict_resolves_substitutions() -> None:
