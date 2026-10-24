@@ -1002,6 +1002,36 @@ async def test_coordinator_inherits_transport_and_ws_path_from_package(
     assert broker.ws_path == "/package/mqtt"
 
 
+async def test_coordinator_inherited_fields_resolve_with_package_substitutions(
+    tmp_path: Path,
+    stub_monitor: type[RecordingMonitor],
+) -> None:
+    """Inherited seed fields keep the package's substitutions; main-file ones still win."""
+    yaml = "substitutions:\n  mqtt_user: main-user\nmqtt:\n  transport: wss\n"
+    device = write_mqtt_device(tmp_path, "alpha", yaml)
+    alpha_path = tmp_path / "alpha.yaml"
+    device.mqtt_extract = build_test_extract(
+        alpha_path,
+        alpha_path.read_text(),
+        {
+            "mqtt": {
+                "broker": "package.example",
+                "port": "${mqtt_port}",
+                "username": "${mqtt_user}",
+            }
+        },
+        {"mqtt_port": "8884", "mqtt_user": "package-user"},
+    )
+    coord = make_mqtt_coordinator(tmp_path, [device])
+
+    await coord.reconcile()
+
+    assert coord.active_brokers == 1
+    broker = stub_monitor.instances[0].broker
+    assert (broker.host, broker.port, broker.username) == ("package.example", 8884, "main-user")
+    assert broker.transport == "wss"
+
+
 async def test_stale_extract_defers_inherited_transport_until_reload(
     tmp_path: Path,
     stub_monitor: type[RecordingMonitor],

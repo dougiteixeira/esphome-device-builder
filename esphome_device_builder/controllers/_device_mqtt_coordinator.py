@@ -492,14 +492,16 @@ def _mqtt_block_for(
 ) -> tuple[os.stat_result, dict[str, Any] | None, dict[str, str]] | None:
     """Stat, ``mqtt:`` block and substitutions to parse; None when a reload must run first."""
     if extract is not None and _extract_fresh(extract, yaml_stat):
-        block = extract.main_block
+        block, subs = extract.main_block, extract.main_substitutions
         if (merged := _inherit_seed_fields(block, extract.resolved_block)) is not None:
             # Seed values bake in secrets, so they are only as fresh as
             # the secrets file they were read against.
             if (extract.secrets_mtime_ns, extract.secrets_size) != secrets_key:
                 return None
-            block = merged
-        return yaml_stat, block, extract.main_substitutions
+            # Inherited values may carry the package's own ``${var}``
+            # tokens; the main file's substitutions still win.
+            block, subs = merged, extract.resolved_substitutions | subs
+        return yaml_stat, block, subs
     # Scan raced an edit (or the device predates the scanner carrying
     # extractions): fall back to reading the file; the handle stat keys
     # the extract-seed comparison. A seed that would add fields is as
