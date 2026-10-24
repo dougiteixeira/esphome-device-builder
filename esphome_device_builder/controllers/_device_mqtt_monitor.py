@@ -431,10 +431,10 @@ class DeviceMqttMonitor:
             loop.call_soon_threadsafe(signals.messages.put_nowait, msg)
 
         # Read per session, not at import: tests swap the module in.
+        api_version = getattr(paho_mqtt, "CallbackAPIVersion", None)
+
         websocket = self._broker.transport in _WEBSOCKET_TRANSPORTS
         paho_transport = "websockets" if websocket else _DEFAULT_TRANSPORT
-
-        api_version = getattr(paho_mqtt, "CallbackAPIVersion", None)
 
         client: Any = (
             paho_mqtt.Client(
