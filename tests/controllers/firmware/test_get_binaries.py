@@ -17,6 +17,7 @@ resolved list (filter to files on disk, append ``firmware.elf``, tag types).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import types
 from pathlib import Path
@@ -354,7 +355,8 @@ async def test_get_binaries_static_platform_uses_precomputed_index(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert {entry["file"] for entry in result} == files
+    expected_files = files | {f"{file}.md5" for file in files}
+    assert {entry["file"] for entry in result} == expected_files
     assert all(entry.get("type") for entry in result)
 
 
@@ -394,6 +396,7 @@ async def test_get_binaries_dynamic_platform_uses_helper(
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
     assert expected_file in {entry["file"] for entry in result}
+    assert f"{expected_file}.md5" in {entry["file"] for entry in result}
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +424,17 @@ async def test_get_binaries_filters_to_files_present_on_disk(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [factory, ota]
+    assert [entry["file"] for entry in result] == [
+        "firmware.factory.bin",
+        "firmware.ota.bin",
+        "firmware.factory.bin.md5",
+        "firmware.ota.bin.md5",
+    ]
+    expected_md5 = hashlib.md5(b"x", usedforsecurity=False).hexdigest()
+    assert result[0]["md5"] == expected_md5
+    assert (build_dir / "firmware.factory.bin.md5").read_text(encoding="ascii") == (
+        f"{expected_md5}  kitchen-firmware.factory.bin\n"
+    )
 
 
 async def test_get_binaries_appends_elf_entry_when_present(
@@ -442,7 +455,11 @@ async def test_get_binaries_appends_elf_entry_when_present(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [factory, _ELF_ENTRY]
+    assert [entry["file"] for entry in result] == [
+        "firmware.factory.bin",
+        "firmware.elf",
+        "firmware.factory.bin.md5",
+    ]
 
 
 async def test_get_binaries_does_not_duplicate_elf_listed_upstream(
@@ -500,7 +517,12 @@ async def test_get_binaries_appends_mcuboot_image_beside_a_uf2(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [uf2, _MCUBOOT_ENTRY]
+    assert [entry["file"] for entry in result] == [
+        "zephyr/zephyr.uf2",
+        "zephyr/app_update.bin",
+        "zephyr/zephyr.uf2.md5",
+        "zephyr/app_update.bin.md5",
+    ]
 
 
 async def test_get_binaries_does_not_duplicate_mcuboot_image_listed_upstream(
@@ -521,7 +543,10 @@ async def test_get_binaries_does_not_duplicate_mcuboot_image_listed_upstream(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [upstream]
+    assert [entry["file"] for entry in result] == [
+        "zephyr/app_update.bin",
+        "zephyr/app_update.bin.md5",
+    ]
 
 
 async def test_get_binaries_omits_mcuboot_image_when_absent(
@@ -542,7 +567,10 @@ async def test_get_binaries_omits_mcuboot_image_when_absent(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [uf2]
+    assert [entry["file"] for entry in result] == [
+        "zephyr/zephyr.uf2",
+        "zephyr/zephyr.uf2.md5",
+    ]
 
 
 async def test_get_binaries_omits_elf_entry_when_absent(
@@ -563,7 +591,10 @@ async def test_get_binaries_omits_elf_entry_when_absent(
 
     result = await controller.get_binaries(configuration="kitchen.yaml")
 
-    assert result == [factory]
+    assert [entry["file"] for entry in result] == [
+        "firmware.factory.bin",
+        "firmware.factory.bin.md5",
+    ]
     assert _ELF_ENTRY not in result
 
 
